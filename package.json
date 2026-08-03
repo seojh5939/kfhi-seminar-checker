@@ -1,0 +1,17 @@
+{
+  "name": "kfhi-seminar-checker-monorepo",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "generator",
+    "reader"
+  ],
+  "scripts": {
+    "build:shared": "pnpm --filter shared build",
+    "test:shared": "pnpm --filter shared test",
+    "test": "pnpm test:shared"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}
