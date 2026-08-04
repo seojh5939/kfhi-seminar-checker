@@ -383,8 +383,8 @@ export function App() {
             </div>
           </div>
 
-          {/* 3개 버튼 구성 */}
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginBottom: '24px' }}>
+          {/* 3개 버튼 구성 (반응형 btn-group) */}
+          <div className="btn-group" style={{ marginBottom: '24px' }}>
             <button className="btn btn-primary" onClick={() => handleOpenFolder(completedResult.outputDir)}>
               📂 생성 폴더 열기
             </button>
@@ -411,23 +411,23 @@ export function App() {
           {/* 검증 결과 리포트 */}
           {verificationSummary && (
             <div style={{ marginTop: '24px', textAlign: 'left', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                   {verificationSummary.failCount === 0 ? (
                     <span className="badge badge-success">검증 완료 (100% 정상)</span>
                   ) : (
                     <span className="badge badge-error">검증 주의 ({verificationSummary.failCount}건 실패)</span>
                   )}
-                  <h3 style={{ fontSize: '16px', fontWeight: 600, margin: 0 }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: 600, margin: 0, whiteSpace: 'nowrap' }}>
                     QR 복호화 및 매니페스트 대조 검증 리포트
                   </h3>
                 </div>
-                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                   성공: <strong style={{ color: 'var(--success-color)' }}>{verificationSummary.successCount}</strong> / 전체: {verificationSummary.total}건
                 </span>
               </div>
 
-              <div className="table-container" style={{ maxHeight: '340px', overflowY: 'auto' }}>
+              <div className="table-container">
                 <table>
                   <thead>
                     <tr>
@@ -459,7 +459,7 @@ export function App() {
                             </span>
                           )}
                         </td>
-                        <td style={{ fontSize: '12px', fontFamily: 'monospace' }}>
+                        <td className="allow-wrap" style={{ fontSize: '12px', fontFamily: 'monospace' }}>
                           {item.status === 'success' && item.decryptedPayload ? (
                             <span style={{ color: '#a5f3fc' }}>
                               {`[${item.decryptedPayload.id}] ${item.decryptedPayload.n} / ${item.decryptedPayload.a} / ${item.decryptedPayload.t} (v${item.decryptedPayload.v})`}
