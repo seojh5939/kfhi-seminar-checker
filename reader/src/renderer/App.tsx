@@ -106,7 +106,7 @@ export const App: React.FC = () => {
     if (record.isDuplicate) {
       setCurrentResult({
         type: 'DUPLICATE',
-        message: `⚠️ [중복 입장] ${record.name} (${record.affiliation}) 님은 이미 출입 처리되었습니다.`,
+        message: `😊 또 오셨네요! 환영합니다! (이미 출입 완료 - ${record.name} ${record.title})`,
         record,
       });
     } else {
@@ -591,13 +591,13 @@ export const App: React.FC = () => {
                 currentResult.type === 'SUCCESS'
                   ? '#064e3b'
                   : currentResult.type === 'DUPLICATE'
-                  ? '#713f12'
+                  ? '#b45309'
                   : '#7f1d1d',
               border:
                 currentResult.type === 'SUCCESS'
                   ? '4px solid #34d399'
                   : currentResult.type === 'DUPLICATE'
-                  ? '4px solid #facc15'
+                  ? '4px solid #fde047'
                   : '4px solid #fca5a5',
               color: 'white',
               padding: '40px 32px',

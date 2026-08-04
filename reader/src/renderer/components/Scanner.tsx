@@ -31,15 +31,14 @@ export const Scanner: React.FC<ScannerProps> = ({
   const recentScanHistory = useRef<Map<string, number>>(new Map());
   const isProcessingFrame = useRef(false);
 
-  // Web Audio API를 활용한 성공(하이패스 띵동)/실패(경고 삐삐) 효과음 유틸리티
-  const playSound = (type: 'SUCCESS' | 'ERROR') => {
+  // Web Audio API를 활용한 성공(띵동)/중복(따뜻한 환영음)/실패(경고 삐삐) 효과음 유틸리티
+  const playSound = (type: 'SUCCESS' | 'DUPLICATE' | 'ERROR') => {
     try {
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const now = audioCtx.currentTime;
 
       if (type === 'SUCCESS') {
         // [하이패스 띵-동 2음계 사운드]
-        // 1음 (띵): G5 (784Hz), 0.12초
         const osc1 = audioCtx.createOscillator();
         const gain1 = audioCtx.createGain();
         osc1.type = 'sine';
@@ -51,7 +50,6 @@ export const Scanner: React.FC<ScannerProps> = ({
         osc1.start(now);
         osc1.stop(now + 0.12);
 
-        // 2음 (동!): C6 (1046Hz), 0.25초 (0.08초 시점에 겹쳐서 재생)
         const osc2 = audioCtx.createOscillator();
         const gain2 = audioCtx.createGain();
         osc2.type = 'sine';
@@ -62,9 +60,31 @@ export const Scanner: React.FC<ScannerProps> = ({
         gain2.connect(audioCtx.destination);
         osc2.start(now + 0.08);
         osc2.stop(now + 0.33);
+      } else if (type === 'DUPLICATE') {
+        // [중복 입장: 따뜻하고 친근한 2단 환영음 (F5 -> A5)]
+        const osc1 = audioCtx.createOscillator();
+        const gain1 = audioCtx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(698.46, now); // F5
+        gain1.gain.setValueAtTime(0.2, now);
+        gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        osc1.connect(gain1);
+        gain1.connect(audioCtx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.15);
+
+        const osc2 = audioCtx.createOscillator();
+        const gain2 = audioCtx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(880.0, now + 0.1); // A5
+        gain2.gain.setValueAtTime(0.25, now + 0.1);
+        gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+        osc2.connect(gain2);
+        gain2.connect(audioCtx.destination);
+        osc2.start(now + 0.1);
+        osc2.stop(now + 0.3);
       } else {
-        // [실패 음: 묵직한 2단 삐-삐 경고음 (추천)]
-        // 1음: E4 (330Hz), 톱니파
+        // [실패 음: 묵직한 2단 삐-삐 경고음]
         const osc1 = audioCtx.createOscillator();
         const gain1 = audioCtx.createGain();
         osc1.type = 'sawtooth';
@@ -76,7 +96,6 @@ export const Scanner: React.FC<ScannerProps> = ({
         osc1.start(now);
         osc1.stop(now + 0.12);
 
-        // 2음: A3 (220Hz), 톱니파 (0.14초 시점)
         const osc2 = audioCtx.createOscillator();
         const gain2 = audioCtx.createGain();
         osc2.type = 'sawtooth';
@@ -231,7 +250,7 @@ export const Scanner: React.FC<ScannerProps> = ({
       };
 
       if (alreadyRegistered) {
-        playSound('ERROR'); // 이미 등록된 중복 입장은 경고음 재생
+        playSound('DUPLICATE'); // 이미 등록된 중복 입장은 부드럽고 따스한 환영음 재생
       } else {
         playSound('SUCCESS'); // 최초 입장은 띵-동 성공음 재생
       }
