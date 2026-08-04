@@ -5,6 +5,7 @@ import { ScanRecord } from 'shared';
 interface ScannerProps {
   locationName: string;
   secretKey?: string;
+  scanHistory: ScanRecord[];
   onScanSuccess: (record: ScanRecord) => void;
   onScanError: (errorMessage: string) => void;
 }
@@ -12,6 +13,7 @@ interface ScannerProps {
 export const Scanner: React.FC<ScannerProps> = ({
   locationName,
   secretKey,
+  scanHistory,
   onScanSuccess,
   onScanError,
 }) => {
@@ -21,7 +23,12 @@ export const Scanner: React.FC<ScannerProps> = ({
   const [cameraStatus, setCameraStatus] = useState<'INITIALIZING' | 'READY' | 'ERROR'>('INITIALIZING');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const recentScanHistory = useRef<Map<string, number>>(new Map()); // id -> timestamp (3초 Cooldown)
+  const scanHistoryRef = useRef<ScanRecord[]>(scanHistory);
+  useEffect(() => {
+    scanHistoryRef.current = scanHistory;
+  }, [scanHistory]);
+
+  const recentScanHistory = useRef<Map<string, number>>(new Map());
   const isProcessingFrame = useRef(false);
 
   // Web Audio API를 활용한 성공(하이패스 띵동)/실패(경고 삐삐) 효과음 유틸리티
@@ -199,13 +206,15 @@ export const Scanner: React.FC<ScannerProps> = ({
       const isSameQr = lastScannedIdRef.current === payload.id;
       const timeDiff = now - lastScannedTimeRef.current;
 
-      // 1. [동일 QR] 3초 이내에 또 대어진 경우 ➡️ 연속 스캔 무시 (소리/팝업 안남)
+      // 1. [동일 QR] 3초 이내에 또 대어진 경우 ➡️ 연속 스캔 반응 무시 (소리/팝업 안남)
       if (isSameQr && timeDiff < 3000) {
         return;
       }
 
-      // 2. [동일 QR 3초 경과 후 재스캔] ➡️ 중복 스캔으로 처리
-      const isDuplicate = isSameQr && timeDiff >= 3000;
+      // 2. [중복 판정] 과거/당일 누적 기록(scanHistory) 중 동일 관리번호가 단 한 번이라도 존재하는지 체크
+      const alreadyRegistered = scanHistoryRef.current.some(
+        (r) => r.managementNumber === payload.id
+      );
 
       // 스캔 이력 타임스탬프 및 ID 갱신
       lastScannedIdRef.current = payload.id;
@@ -218,10 +227,15 @@ export const Scanner: React.FC<ScannerProps> = ({
         title: payload.t,
         location: locationName,
         scannedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
-        isDuplicate,
+        isDuplicate: alreadyRegistered,
       };
 
-      playSound('SUCCESS');
+      if (alreadyRegistered) {
+        playSound('ERROR'); // 이미 등록된 중복 입장은 경고음 재생
+      } else {
+        playSound('SUCCESS'); // 최초 입장은 띵-동 성공음 재생
+      }
+
       onScanSuccess(record);
     } catch (err: any) {
       playSound('ERROR');
@@ -230,7 +244,7 @@ export const Scanner: React.FC<ScannerProps> = ({
   };
 
   return (
-    <div style={{ position: 'relative', width: '100%', maxWidth: '500px', margin: '0 auto' }}>
+    <div style={{ position: 'relative', width: '100%', maxWidth: '500px', margin: '0 auto', borderRadius: '12px', overflow: 'hidden' }}>
       <video
         ref={videoRef}
         muted

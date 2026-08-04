@@ -28,6 +28,12 @@ export const App: React.FC = () => {
   });
 
   const [showHistoryToggle, setShowHistoryToggle] = useState<boolean>(false);
+  const [showPasswordModal, setShowPasswordModal] = useState<boolean>(false);
+  const [passwordInput, setPasswordInput] = useState<string>('');
+  const [passwordError, setPasswordError] = useState<string>('');
+
+  // 유니크 참석 인원 카운트 (중복 스캔 제외)
+  const uniqueAttendeeCount = scanHistory.filter((r) => !r.isDuplicate).length;
 
   const [currentResult, setCurrentResult] = useState<{
     type: 'SUCCESS' | 'DUPLICATE' | 'ERROR';
@@ -67,7 +73,7 @@ export const App: React.FC = () => {
     if (record.isDuplicate) {
       setCurrentResult({
         type: 'DUPLICATE',
-        message: `[중복 입장] ${record.name} (${record.affiliation}) 님은 이미 처리되었습니다.`,
+        message: `⚠️ [중복 입장] ${record.name} (${record.affiliation}) 님은 이미 출입 처리되었습니다.`,
         record,
       });
     } else {
@@ -99,11 +105,24 @@ export const App: React.FC = () => {
     }, 3000);
   };
 
-  const handleExportCsv = async () => {
+  const handleExportCsvClick = () => {
     if (scanHistory.length === 0) {
       alert('내보낼 방문 기록이 없습니다.');
       return;
     }
+    setPasswordInput('');
+    setPasswordError('');
+    setShowPasswordModal(true);
+  };
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordInput !== '2026-NDS') {
+      setPasswordError('비밀번호가 올바르지 않습니다.');
+      return;
+    }
+
+    setShowPasswordModal(false);
 
     if (window.electronAPI) {
       const filePath = await window.electronAPI.selectOutputDir();
@@ -148,7 +167,7 @@ export const App: React.FC = () => {
         {isLocationSet && (
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
-              onClick={handleExportCsv}
+              onClick={handleExportCsvClick}
               style={{
                 backgroundColor: '#10b981',
                 color: 'white',
@@ -159,7 +178,7 @@ export const App: React.FC = () => {
                 cursor: 'pointer',
               }}
             >
-              CSV 내보내기 ({scanHistory.length}건)
+              CSV 내보내기 (참석자: {uniqueAttendeeCount}명)
             </button>
             <button
               onClick={handleLocationReset}
@@ -225,6 +244,7 @@ export const App: React.FC = () => {
             </h3>
             <Scanner
               locationName={locationName}
+              scanHistory={scanHistory}
               onScanSuccess={handleScanSuccess}
               onScanError={handleScanError}
             />
@@ -248,7 +268,7 @@ export const App: React.FC = () => {
                 cursor: 'pointer',
               }}
             >
-              <span>📋 최근 스캔 기록 ({scanHistory.length} 명)</span>
+              <span>📋 최근 스캔 기록 (실제 참석: {uniqueAttendeeCount} 명 / 총 {scanHistory.length} 건)</span>
               <span>{showHistoryToggle ? '▲ 접기' : '▼ 펼치기'}</span>
             </button>
 
@@ -291,6 +311,105 @@ export const App: React.FC = () => {
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 관리자 비밀번호 검증 모달 */}
+      {showPasswordModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '20px',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#1e293b',
+              padding: '32px',
+              borderRadius: '16px',
+              width: '100%',
+              maxWidth: '420px',
+              textAlign: 'center',
+              border: '1px solid #475569',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
+            }}
+          >
+            <h3 style={{ margin: '0 0 8px 0', fontSize: '20px', color: '#38bdf8' }}>🔒 관리자 인증</h3>
+            <p style={{ margin: '0 0 20px 0', fontSize: '14px', color: '#94a3b8' }}>
+              비밀번호는 관리자에게 문의하시기 바랍니다
+            </p>
+
+            <form onSubmit={handlePasswordSubmit}>
+              <input
+                type="password"
+                placeholder="비밀번호 입력"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                autoFocus
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: passwordError ? '2px solid #f87171' : '1px solid #475569',
+                  backgroundColor: '#0f172a',
+                  color: 'white',
+                  fontSize: '16px',
+                  marginBottom: '12px',
+                  boxSizing: 'border-box',
+                  outline: 'none',
+                }}
+              />
+              {passwordError && (
+                <div style={{ color: '#f87171', fontSize: '13px', marginBottom: '16px', textAlign: 'left' }}>
+                  {passwordError}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordModal(false)}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: '#475569',
+                    color: 'white',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                  }}
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: '#10b981',
+                    color: 'white',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                  }}
+                >
+                  인증 및 다운로드
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
