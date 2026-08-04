@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Scanner } from './components/Scanner';
 import { ScanRecord } from 'shared';
 
@@ -52,38 +52,49 @@ export const App: React.FC = () => {
     }
   };
 
+  const popupTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const handleScanSuccess = (record: ScanRecord) => {
     setScanHistory((prev) => [record, ...prev]);
+
+    // 기존 팝업 타이머가 있으면 즉시 취소하고 새 팝업으로 3초 갱신
+    if (popupTimerRef.current) {
+      clearTimeout(popupTimerRef.current);
+    }
 
     if (record.isDuplicate) {
       setCurrentResult({
         type: 'DUPLICATE',
-        message: `[중복 입장] ${record.name} (${record.affiliation}) 님은 이미 출입 처리되었습니다.`,
+        message: `⚠️ [중복 입장] ${record.name} (${record.affiliation}) 님은 이미 처리되었습니다.`,
         record,
       });
     } else {
       setCurrentResult({
         type: 'SUCCESS',
-        message: `[입장 완료] ${record.name} (${record.affiliation} ${record.title}) 환영합니다!`,
+        message: `🎉 [입장 완료] ${record.name} (${record.affiliation} ${record.title}) 님 환영합니다!`,
         record,
       });
     }
 
-    // 2.5초 후 팝업 자동 닫기
-    setTimeout(() => {
+    // 새로운 QR이 인식되면 그 시점부터 3초 동안 팝업 띄우기
+    popupTimerRef.current = setTimeout(() => {
       setCurrentResult(null);
-    }, 2500);
+    }, 3000);
   };
 
   const handleScanError = (msg: string) => {
+    if (popupTimerRef.current) {
+      clearTimeout(popupTimerRef.current);
+    }
+
     setCurrentResult({
       type: 'ERROR',
       message: msg,
     });
 
-    setTimeout(() => {
+    popupTimerRef.current = setTimeout(() => {
       setCurrentResult(null);
-    }, 2500);
+    }, 3000);
   };
 
   const handleExportCsv = async () => {
@@ -216,13 +227,14 @@ export const App: React.FC = () => {
               />
             </div>
 
-            {/* 결과 팝업 배너 */}
+            {/* 3초 환영/경고 팝업 배너 (시인성 강화) */}
             {currentResult && (
               <div
                 style={{
-                  padding: '16px 20px',
-                  borderRadius: '10px',
+                  padding: '20px 24px',
+                  borderRadius: '12px',
                   fontWeight: 'bold',
+                  fontSize: '18px',
                   textAlign: 'center',
                   backgroundColor:
                     currentResult.type === 'SUCCESS'
@@ -231,8 +243,15 @@ export const App: React.FC = () => {
                       ? '#854d0e'
                       : '#991b1b',
                   color: 'white',
-                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)',
-                  transition: 'all 0.3s ease',
+                  border:
+                    currentResult.type === 'SUCCESS'
+                      ? '2px solid #34d399'
+                      : currentResult.type === 'DUPLICATE'
+                      ? '2px solid #facc15'
+                      : '2px solid #fca5a5',
+                  boxShadow: '0 12px 20px -3px rgba(0, 0, 0, 0.5)',
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                  animation: 'pulse 2s infinite',
                 }}
               >
                 {currentResult.message}

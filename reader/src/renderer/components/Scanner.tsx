@@ -24,31 +24,65 @@ export const Scanner: React.FC<ScannerProps> = ({
   const recentScanHistory = useRef<Map<string, number>>(new Map()); // id -> timestamp (3초 Cooldown)
   const isProcessingFrame = useRef(false);
 
-  // Web Audio API를 활용한 성공/에러 비프음 재생 유틸리티
+  // Web Audio API를 활용한 성공(하이패스 띵동)/실패(경고 삐삐) 효과음 유틸리티
   const playSound = (type: 'SUCCESS' | 'ERROR') => {
     try {
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
+      const now = audioCtx.currentTime;
 
-      osc.type = 'sine';
       if (type === 'SUCCESS') {
-        osc.frequency.setValueAtTime(880, audioCtx.currentTime); // A5 (높은 삐 소리)
-        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.15);
+        // [하이패스 띵-동 2음계 사운드]
+        // 1음 (띵): G5 (784Hz), 0.12초
+        const osc1 = audioCtx.createOscillator();
+        const gain1 = audioCtx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(783.99, now);
+        gain1.gain.setValueAtTime(0.25, now);
+        gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+        osc1.connect(gain1);
+        gain1.connect(audioCtx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.12);
+
+        // 2음 (동!): C6 (1046Hz), 0.25초 (0.08초 시점에 겹쳐서 재생)
+        const osc2 = audioCtx.createOscillator();
+        const gain2 = audioCtx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(1046.5, now + 0.08);
+        gain2.gain.setValueAtTime(0.3, now + 0.08);
+        gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.33);
+        osc2.connect(gain2);
+        gain2.connect(audioCtx.destination);
+        osc2.start(now + 0.08);
+        osc2.stop(now + 0.33);
       } else {
-        osc.frequency.setValueAtTime(300, audioCtx.currentTime); // 둔탁한 에러음
-        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.3);
+        // [실패 음: 묵직한 2단 삐-삐 경고음 (추천)]
+        // 1음: E4 (330Hz), 톱니파
+        const osc1 = audioCtx.createOscillator();
+        const gain1 = audioCtx.createGain();
+        osc1.type = 'sawtooth';
+        osc1.frequency.setValueAtTime(330, now);
+        gain1.gain.setValueAtTime(0.25, now);
+        gain1.gain.linearRampToValueAtTime(0.01, now + 0.12);
+        osc1.connect(gain1);
+        gain1.connect(audioCtx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.12);
+
+        // 2음: A3 (220Hz), 톱니파 (0.14초 시점)
+        const osc2 = audioCtx.createOscillator();
+        const gain2 = audioCtx.createGain();
+        osc2.type = 'sawtooth';
+        osc2.frequency.setValueAtTime(220, now + 0.14);
+        gain2.gain.setValueAtTime(0.25, now + 0.14);
+        gain2.gain.linearRampToValueAtTime(0.01, now + 0.32);
+        osc2.connect(gain2);
+        gain2.connect(audioCtx.destination);
+        osc2.start(now + 0.14);
+        osc2.stop(now + 0.32);
       }
     } catch {
-      // AudioContext 미지원 환경 가드
+      // AudioContext 미지원 가드
     }
   };
 
@@ -140,6 +174,9 @@ export const Scanner: React.FC<ScannerProps> = ({
     };
   }, []);
 
+  const lastScannedIdRef = useRef<string | null>(null);
+  const lastScannedTimeRef = useRef<number>(0);
+
   const handleDecodedQr = async (cipherText: string) => {
     try {
       let payload: any = null;
@@ -159,13 +196,20 @@ export const Scanner: React.FC<ScannerProps> = ({
       }
 
       const now = Date.now();
+      const isSameQr = lastScannedIdRef.current === payload.id;
+      const timeDiff = now - lastScannedTimeRef.current;
 
-      // 3초 Cooldown/Debounce 검사 (동일 대상 연달아 스캔 방지)
-      const lastScanned = recentScanHistory.current.get(payload.id);
-      const isDuplicate = !!(lastScanned && now - lastScanned < 3000);
+      // 1. [동일 QR] 3초 이내에 또 대어진 경우 ➡️ 연속 스캔 무시 (소리/팝업 안남)
+      if (isSameQr && timeDiff < 3000) {
+        return;
+      }
 
-      // 스캔 이력 타임스탬프 갱신
-      recentScanHistory.current.set(payload.id, now);
+      // 2. [동일 QR 3초 경과 후 재스캔] ➡️ 중복 스캔으로 처리
+      const isDuplicate = isSameQr && timeDiff >= 3000;
+
+      // 스캔 이력 타임스탬프 및 ID 갱신
+      lastScannedIdRef.current = payload.id;
+      lastScannedTimeRef.current = now;
 
       const record: ScanRecord = {
         managementNumber: payload.id,
