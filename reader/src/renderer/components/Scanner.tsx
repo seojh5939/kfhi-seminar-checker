@@ -20,8 +20,15 @@ export const Scanner: React.FC<ScannerProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [cameraStatus, setCameraStatus] = useState<'INITIALIZING' | 'READY' | 'ERROR'>('INITIALIZING');
+  const [cameraStatus, setCameraStatus] = useState<'INITIALIZING' | 'READY' | 'OFF' | 'ERROR'>('INITIALIZING');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // 카메라 ON/OFF 및 장치 선택 상태
+  const [isCameraOn, setIsCameraOn] = useState<boolean>(true);
+  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>(() => {
+    return localStorage.getItem('kfhi_selected_camera_id') || '';
+  });
 
   const scanHistoryRef = useRef<ScanRecord[]>(scanHistory);
   useEffect(() => {
@@ -38,7 +45,6 @@ export const Scanner: React.FC<ScannerProps> = ({
       const now = audioCtx.currentTime;
 
       if (type === 'SUCCESS') {
-        // [하이패스 띵-동 2음계 사운드]
         const osc1 = audioCtx.createOscillator();
         const gain1 = audioCtx.createGain();
         osc1.type = 'sine';
@@ -61,7 +67,6 @@ export const Scanner: React.FC<ScannerProps> = ({
         osc2.start(now + 0.08);
         osc2.stop(now + 0.33);
       } else if (type === 'DUPLICATE') {
-        // [중복 입장: 따뜻하고 친근한 2단 환영음 (F5 -> A5)]
         const osc1 = audioCtx.createOscillator();
         const gain1 = audioCtx.createGain();
         osc1.type = 'sine';
@@ -84,7 +89,6 @@ export const Scanner: React.FC<ScannerProps> = ({
         osc2.start(now + 0.1);
         osc2.stop(now + 0.3);
       } else {
-        // [실패 음: 묵직한 2단 삐-삐 경고음]
         const osc1 = audioCtx.createOscillator();
         const gain1 = audioCtx.createGain();
         osc1.type = 'sawtooth';
@@ -112,20 +116,53 @@ export const Scanner: React.FC<ScannerProps> = ({
     }
   };
 
+  // 카메라 장치 목록 로드 (videoinput)
+  const updateCameraDevices = async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = devices.filter((device) => device.kind === 'videoinput');
+      setCameraDevices(videoInputs);
+
+      // 선택된 deviceId가 없거나 목록에 없으면 첫 번째 장치 자동 선택
+      if (videoInputs.length > 0) {
+        const exists = videoInputs.some((d) => d.deviceId === selectedDeviceId);
+        if (!selectedDeviceId || !exists) {
+          setSelectedDeviceId(videoInputs[0].deviceId);
+        }
+      }
+    } catch {
+      // 장치 열람 오류 가드
+    }
+  };
+
   useEffect(() => {
     let animationFrameId: number;
     let stream: MediaStream | null = null;
 
+    if (!isCameraOn) {
+      setCameraStatus('OFF');
+      setIsScanning(false);
+      return;
+    }
+
     const startCamera = async () => {
       try {
         setCameraStatus('INITIALIZING');
+
+        const videoConstraints: MediaTrackConstraints = {
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+        };
+
+        if (selectedDeviceId) {
+          videoConstraints.deviceId = { exact: selectedDeviceId };
+        } else {
+          videoConstraints.facingMode = 'user';
+        }
+
         // 640x480 다운샘플링 캡처 (저사양 카메라 최적화)
         stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-            facingMode: 'user',
-          },
+          video: videoConstraints,
           audio: false,
         });
 
@@ -134,11 +171,14 @@ export const Scanner: React.FC<ScannerProps> = ({
           await videoRef.current.play();
           setCameraStatus('READY');
           setIsScanning(true);
+
+          // 카메라 정상 시작 후 사용 가능한 카메라 목록 업데이트
+          await updateCameraDevices();
           scanFrameLoop();
         }
       } catch (err: any) {
         setCameraStatus('ERROR');
-        setErrorMessage('카메라를 연결할 수 없습니다. 웹캠 권한 및 연결 상태를 확인해주세요.');
+        setErrorMessage('선택하신 카메라를 연결할 수 없습니다. 연결 상태 및 권한을 확인해주세요.');
         onScanError('카메라 초기화 실패');
       }
     };
@@ -198,7 +238,13 @@ export const Scanner: React.FC<ScannerProps> = ({
         stream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, []);
+  }, [isCameraOn, selectedDeviceId]);
+
+  const handleDeviceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newDeviceId = e.target.value;
+    setSelectedDeviceId(newDeviceId);
+    localStorage.setItem('kfhi_selected_camera_id', newDeviceId);
+  };
 
   const lastScannedCipherRef = useRef<string | null>(null);
   const lastScannedTimeRef = useRef<number>(0);
@@ -263,68 +309,134 @@ export const Scanner: React.FC<ScannerProps> = ({
   };
 
   return (
-    <div style={{ position: 'relative', width: '100%', maxWidth: '500px', margin: '0 auto', borderRadius: '12px', overflow: 'hidden' }}>
-      <video
-        ref={videoRef}
-        muted
-        playsInline
-        style={{
-          width: '100%',
-          borderRadius: '12px',
-          backgroundColor: '#1e293b',
-          display: cameraStatus === 'READY' ? 'block' : 'none',
-        }}
-      />
-      <canvas ref={canvasRef} style={{ display: 'none' }} />
-
-      {/* 중앙 ROI 가이드 Overlay (250x250 레티클 박스) */}
-      {cameraStatus === 'READY' && (
-        <div
+    <div style={{ position: 'relative', width: '100%', maxWidth: '500px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      {/* 카메라 제어 바: ON/OFF 버튼 & 카메라 선택 드롭다운 */}
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#0f172a', padding: '8px 12px', borderRadius: '8px', border: '1px solid #334155' }}>
+        {/* 카메라 ON/OFF 버튼 */}
+        <button
+          onClick={() => setIsCameraOn((prev) => !prev)}
           style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
+            backgroundColor: isCameraOn ? '#15803d' : '#991b1b',
+            color: 'white',
+            border: 'none',
+            padding: '6px 12px',
+            borderRadius: '6px',
+            fontWeight: 'bold',
+            fontSize: '13px',
+            cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            pointerEvents: 'none',
+            gap: '6px',
+            whiteSpace: 'nowrap',
           }}
         >
+          {isCameraOn ? '🟢 카메라 ON' : '🔴 카메라 OFF'}
+        </button>
+
+        {/* 카메라 선택 드롭다운 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, maxWidth: '280px' }}>
+          <span style={{ fontSize: '13px', color: '#94a3b8', whiteSpace: 'nowrap' }}>📷</span>
+          <select
+            value={selectedDeviceId}
+            onChange={handleDeviceChange}
+            disabled={!isCameraOn || cameraDevices.length === 0}
+            style={{
+              width: '100%',
+              padding: '6px 10px',
+              borderRadius: '6px',
+              border: '1px solid #475569',
+              backgroundColor: '#1e293b',
+              color: isCameraOn ? 'white' : '#64748b',
+              fontSize: '12px',
+              outline: 'none',
+              cursor: isCameraOn ? 'pointer' : 'not-allowed',
+            }}
+          >
+            {cameraDevices.length === 0 ? (
+              <option value="">카메라 찾는 중...</option>
+            ) : (
+              cameraDevices.map((device, idx) => (
+                <option key={device.deviceId || idx} value={device.deviceId}>
+                  {device.label || `카메라 ${idx + 1}`}
+                </option>
+              ))
+            )}
+          </select>
+        </div>
+      </div>
+
+      {/* 비디오 뷰포트 컨테이너 */}
+      <div style={{ position: 'relative', width: '100%', borderRadius: '12px', overflow: 'hidden' }}>
+        <video
+          ref={videoRef}
+          muted
+          playsInline
+          style={{
+            width: '100%',
+            borderRadius: '12px',
+            backgroundColor: '#1e293b',
+            display: isCameraOn && cameraStatus === 'READY' ? 'block' : 'none',
+          }}
+        />
+        <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+        {/* 중앙 ROI 가이드 Overlay (250x250 레티클 박스) */}
+        {isCameraOn && cameraStatus === 'READY' && (
           <div
             style={{
-              width: '220px',
-              height: '220px',
-              border: '3px solid #10b981',
-              borderRadius: '16px',
-              boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.4)',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#10b981',
-              fontWeight: 'bold',
-              fontSize: '14px',
+              pointerEvents: 'none',
             }}
           >
-            <span style={{ backgroundColor: 'rgba(0,0,0,0.6)', padding: '4px 10px', borderRadius: '4px' }}>
-              QR을 사각형 안에 맞추세요
-            </span>
+            <div
+              style={{
+                width: '220px',
+                height: '220px',
+                border: '3px solid #10b981',
+                borderRadius: '16px',
+                boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#10b981',
+                fontWeight: 'bold',
+                fontSize: '14px',
+              }}
+            >
+              <span style={{ backgroundColor: 'rgba(0,0,0,0.6)', padding: '4px 10px', borderRadius: '4px' }}>
+                QR을 사각형 안에 맞추세요
+              </span>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {cameraStatus === 'INITIALIZING' && (
-        <div style={{ padding: '60px', textAlign: 'center', backgroundColor: '#1e293b', borderRadius: '12px', color: '#94a3b8' }}>
-          카메라를 초기화하는 중입니다...
-        </div>
-      )}
+        {!isCameraOn && (
+          <div style={{ padding: '70px 20px', textAlign: 'center', backgroundColor: '#1e293b', borderRadius: '12px', color: '#94a3b8' }}>
+            <div style={{ fontSize: '32px', marginBottom: '8px' }}>📷</div>
+            <div style={{ fontWeight: 'bold', fontSize: '15px', color: '#f8fafc' }}>카메라가 꺼져 있습니다</div>
+            <div style={{ fontSize: '12px', marginTop: '4px' }}>상단의 '카메라 ON' 버튼을 눌러 스캔을 재개하세요.</div>
+          </div>
+        )}
 
-      {cameraStatus === 'ERROR' && (
-        <div style={{ padding: '40px', textAlign: 'center', backgroundColor: '#451a1a', borderRadius: '12px', color: '#fca5a5' }}>
-          {errorMessage}
-        </div>
-      )}
+        {isCameraOn && cameraStatus === 'INITIALIZING' && (
+          <div style={{ padding: '60px', textAlign: 'center', backgroundColor: '#1e293b', borderRadius: '12px', color: '#94a3b8' }}>
+            카메라를 연결하는 중입니다...
+          </div>
+        )}
+
+        {isCameraOn && cameraStatus === 'ERROR' && (
+          <div style={{ padding: '40px', textAlign: 'center', backgroundColor: '#451a1a', borderRadius: '12px', color: '#fca5a5' }}>
+            {errorMessage}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
