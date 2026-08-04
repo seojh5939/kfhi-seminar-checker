@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Scanner } from './components/Scanner';
 import { ScanRecord } from 'shared';
+import appPackageJson from '../../package.json';
 
 declare global {
   interface Window {
@@ -470,6 +471,21 @@ export const App: React.FC = () => {
                 <span>📍 장소 변경</span>
                 <span style={{ fontSize: '13px', opacity: 0.8 }}>바탕화면 자동 백업</span>
               </button>
+            </div>
+
+            {/* 설정 모달 최하단 버전 명시 (package.json 연동) */}
+            <div
+              style={{
+                marginTop: '24px',
+                paddingTop: '16px',
+                borderTop: '1px solid #334155',
+                textAlign: 'center',
+                fontSize: '13px',
+                color: '#64748b',
+                fontWeight: '500',
+              }}
+            >
+              기아대책 QR 인식기 v{appPackageJson.version}
             </div>
           </div>
         </div>
