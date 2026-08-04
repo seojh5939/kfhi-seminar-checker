@@ -46,6 +46,18 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
+import { CryptoEngine } from 'shared';
+
+ipcMain.handle('reader:decrypt-payload', async (_event, { cipherText, secretKey }: { cipherText: string; secretKey?: string }) => {
+  try {
+    const engine = new CryptoEngine(secretKey);
+    const payload = engine.decryptToPayload(cipherText);
+    return { success: true, payload };
+  } catch (error: any) {
+    return { success: false, error: error.message || '복호화 실패' };
+  }
+});
+
 // IPC Handlers
 ipcMain.handle('reader:select-output-dir', async () => {
   if (!mainWindow) return null;

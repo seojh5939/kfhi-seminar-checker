@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import QrScanner from 'qr-scanner';
-import { CryptoEngine, ScanRecord } from 'shared';
+import { ScanRecord } from 'shared';
 
 interface ScannerProps {
   locationName: string;
@@ -21,7 +21,6 @@ export const Scanner: React.FC<ScannerProps> = ({
   const [cameraStatus, setCameraStatus] = useState<'INITIALIZING' | 'READY' | 'ERROR'>('INITIALIZING');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const cryptoEngineRef = useRef(new CryptoEngine(secretKey));
   const recentScanHistory = useRef<Map<string, number>>(new Map()); // id -> timestamp (3초 Cooldown)
   const isProcessingFrame = useRef(false);
 
@@ -119,7 +118,7 @@ export const Scanner: React.FC<ScannerProps> = ({
             });
 
             if (result && result.data) {
-              handleDecodedQr(result.data);
+              await handleDecodedQr(result.data);
             }
           } catch {
             // 디코딩 실패(QR 미포착)는 루프 내에서 자연스럽게 무시
@@ -141,10 +140,24 @@ export const Scanner: React.FC<ScannerProps> = ({
     };
   }, []);
 
-  const handleDecodedQr = (cipherText: string) => {
+  const handleDecodedQr = async (cipherText: string) => {
     try {
-      // 콤팩트 및 기존 Hex 복호화 지원
-      const payload = cryptoEngineRef.current.decryptToPayload(cipherText);
+      let payload: any = null;
+
+      if ((window as any).electronAPI?.decryptPayload) {
+        const res = await (window as any).electronAPI.decryptPayload(cipherText, secretKey);
+        if (!res.success) throw new Error(res.error);
+        payload = res.payload;
+      } else {
+        // 웹 순수 테스트 Fallback (구분자 형태 단축 파싱 시도)
+        if (cipherText.includes('|')) {
+          const parts = cipherText.split('|');
+          payload = { v: 1, id: parts[1] || '00001', n: parts[2] || '테스트', a: parts[3] || '기아대책', t: parts[4] || '참석자' };
+        } else {
+          throw new Error('Electron 환경에서 구동해주세요.');
+        }
+      }
+
       const now = Date.now();
 
       // 3초 Cooldown/Debounce 검사 (동일 대상 연달아 스캔 방지)

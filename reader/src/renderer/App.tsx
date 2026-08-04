@@ -7,6 +7,7 @@ declare global {
     electronAPI?: {
       selectOutputDir: () => Promise<string | null>;
       exportCsv: (records: any[], targetPath: string) => Promise<{ success: boolean; count?: number; error?: string }>;
+      decryptPayload: (cipherText: string, secretKey?: string) => Promise<{ success: boolean; payload?: any; error?: string }>;
       openFolder: (folderPath: string) => Promise<void>;
     };
   }
