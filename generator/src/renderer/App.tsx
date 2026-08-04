@@ -25,6 +25,23 @@ export function App() {
     outputDir: string;
   } | null>(null);
 
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationSummary, setVerificationSummary] = useState<{
+    total: number;
+    successCount: number;
+    failCount: number;
+    items: Array<{
+      managementNumber: string;
+      name: string;
+      affiliation: string;
+      title: string;
+      fileName: string;
+      status: 'success' | 'fail';
+      decryptedPayload?: any;
+      failReason?: string;
+    }>;
+  } | null>(null);
+
   useEffect(() => {
     if (window.electron?.onProgress) {
       const cleanup = window.electron.onProgress((data) => {
@@ -47,6 +64,7 @@ export function App() {
     setFilePath(selectedFile);
     setValidationResult(null);
     setCompletedResult(null);
+    setVerificationSummary(null);
     setIsValidating(true);
 
     if (window.electron) {
@@ -80,6 +98,7 @@ export function App() {
     if (!validationResult || !validationResult.isValid || !outputDir) return;
 
     setIsGenerating(true);
+    setVerificationSummary(null);
     setProgress({ current: 0, total: validationResult.attendees.length, attendeeName: '', managementNumber: '' });
 
     if (window.electron) {
@@ -117,12 +136,55 @@ export function App() {
     setIsGenerating(false);
   };
 
+  const handleVerifyOutput = async () => {
+    if (!completedResult) return;
+
+    setIsVerifying(true);
+    if (window.electron) {
+      const res = await window.electron.verifyOutput({
+        outputDir: completedResult.outputDir,
+        manifestPath: completedResult.manifestPath,
+      });
+
+      if (res.success && res.summary) {
+        setVerificationSummary(res.summary);
+      } else {
+        alert(`검증 오류: ${res.error || '검증을 완료하지 못했습니다.'}`);
+      }
+    } else {
+      // Mock verification data
+      setVerificationSummary({
+        total: completedResult.count,
+        successCount: completedResult.count,
+        failCount: 0,
+        items: validationResult?.attendees.map((a) => ({
+          managementNumber: a.managementNumber,
+          name: a.name,
+          affiliation: a.affiliation,
+          title: a.title,
+          fileName: `${a.managementNumber}.png`,
+          status: 'success' as const,
+          decryptedPayload: {
+            v: 1,
+            id: a.managementNumber,
+            n: a.name,
+            a: a.affiliation,
+            t: a.title,
+            ts: Date.now(),
+          },
+        })) || [],
+      });
+    }
+    setIsVerifying(false);
+  };
+
   const handleReset = () => {
     setFilePath(null);
     setOutputDir(null);
     setValidationResult(null);
     setProgress(null);
     setCompletedResult(null);
+    setVerificationSummary(null);
   };
 
   const handleOpenFolder = (path: string) => {
@@ -220,7 +282,7 @@ export function App() {
                   <div className="stat-value">{validationResult.attendees.length} 명</div>
                 </div>
                 <div className="stat-item">
-                  <div className="stat-label">분류될 소속 폴더 수</div>
+                  <div className="stat-label">소속 이사회 수</div>
                   <div className="stat-value">{getUniqueAffiliationCount(validationResult.attendees)} 개</div>
                 </div>
               </div>
@@ -275,7 +337,7 @@ export function App() {
             AES-256-GCM 암호화 QR 생성 진행 중...
           </h2>
           <p className="subtitle" style={{ marginBottom: '24px' }}>
-            소속별 폴더에 이미지(PNG) 저장 및 매니페스트 레코드를 작성 중입니다.
+            지정한 폴더에 이미지(PNG) 저장 및 매니페스트 레코드를 작성 중입니다.
           </p>
 
           <div className="progress-container">
@@ -299,16 +361,16 @@ export function App() {
 
       {/* STEP 4: 완료 리포트 */}
       {completedResult && (
-        <section className="glass-card" style={{ textAlign: 'center', padding: '40px 24px' }}>
-          <div style={{ fontSize: '48px', marginBottom: '12px' }}>🎉</div>
+        <section className="glass-card" style={{ textAlign: 'center', padding: '36px 24px' }}>
+          <div style={{ fontSize: '44px', marginBottom: '8px' }}>🎉</div>
           <h2 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--success-color)', marginBottom: '8px' }}>
             QR코드 대량 생성 완료!
           </h2>
-          <p className="subtitle" style={{ marginBottom: '24px' }}>
+          <p className="subtitle" style={{ marginBottom: '20px' }}>
             총 {completedResult.count}건의 암호화 QR 이미지 및 매니페스트 CSV가 정상 저장되었습니다.
           </p>
 
-          <div className="stat-grid" style={{ marginBottom: '24px' }}>
+          <div className="stat-grid" style={{ marginBottom: '20px' }}>
             <div className="stat-item">
               <div className="stat-label">저장 완료 항목</div>
               <div className="stat-value">{completedResult.count} 건</div>
@@ -321,14 +383,98 @@ export function App() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+          {/* 3개 버튼 구성 */}
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginBottom: '24px' }}>
             <button className="btn btn-primary" onClick={() => handleOpenFolder(completedResult.outputDir)}>
               📂 생성 폴더 열기
+            </button>
+            <button
+              className="btn btn-secondary"
+              style={{ background: 'rgba(56, 189, 248, 0.15)', borderColor: 'var(--accent-cyan)', color: 'var(--accent-cyan)' }}
+              onClick={handleVerifyOutput}
+              disabled={isVerifying}
+            >
+              {isVerifying ? '🔍 검증 진행 중...' : '🔍 생성물 검증하기'}
             </button>
             <button className="btn btn-secondary" onClick={handleReset}>
               🔄 새 엑셀 작업하기
             </button>
           </div>
+
+          {/* 검증 진행 상태 */}
+          {isVerifying && (
+            <div style={{ textAlign: 'center', margin: '20px 0', color: 'var(--accent-cyan)' }}>
+              생성된 QR PNG 복호화 및 매니페스트 엑셀 대조 검증 작업 수행 중...
+            </div>
+          )}
+
+          {/* 검증 결과 리포트 */}
+          {verificationSummary && (
+            <div style={{ marginTop: '24px', textAlign: 'left', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {verificationSummary.failCount === 0 ? (
+                    <span className="badge badge-success">검증 완료 (100% 정상)</span>
+                  ) : (
+                    <span className="badge badge-error">검증 주의 ({verificationSummary.failCount}건 실패)</span>
+                  )}
+                  <h3 style={{ fontSize: '16px', fontWeight: 600, margin: 0 }}>
+                    QR 복호화 및 매니페스트 대조 검증 리포트
+                  </h3>
+                </div>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                  성공: <strong style={{ color: 'var(--success-color)' }}>{verificationSummary.successCount}</strong> / 전체: {verificationSummary.total}건
+                </span>
+              </div>
+
+              <div className="table-container" style={{ maxHeight: '340px', overflowY: 'auto' }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>관리번호</th>
+                      <th>성명</th>
+                      <th>소속</th>
+                      <th>직함</th>
+                      <th>파일명</th>
+                      <th>상태</th>
+                      <th>복호화 평문 내용 (QR 스캔 원문)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {verificationSummary.items.map((item, idx) => (
+                      <tr key={idx}>
+                        <td style={{ fontWeight: 600 }}>{item.managementNumber}</td>
+                        <td>{item.name}</td>
+                        <td>{item.affiliation}</td>
+                        <td>{item.title}</td>
+                        <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{item.fileName}</td>
+                        <td>
+                          {item.status === 'success' ? (
+                            <span className="badge badge-success" style={{ padding: '2px 8px', fontSize: '11px' }}>
+                              성공
+                            </span>
+                          ) : (
+                            <span className="badge badge-error" style={{ padding: '2px 8px', fontSize: '11px' }}>
+                              실패
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ fontSize: '12px', fontFamily: 'monospace' }}>
+                          {item.status === 'success' && item.decryptedPayload ? (
+                            <span style={{ color: '#a5f3fc' }}>
+                              {`[${item.decryptedPayload.id}] ${item.decryptedPayload.n} / ${item.decryptedPayload.a} / ${item.decryptedPayload.t} (v${item.decryptedPayload.v})`}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--error-color)' }}>{item.failReason}</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </section>
       )}
     </div>

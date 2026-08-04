@@ -18,6 +18,11 @@ export interface ElectronAPI {
     error?: string;
   }>;
   openFolder: (folderPath: string) => Promise<void>;
+  verifyOutput: (params: { outputDir: string; manifestPath?: string }) => Promise<{
+    success: boolean;
+    summary?: any;
+    error?: string;
+  }>;
   onProgress: (callback: (progress: { current: number; total: number; attendeeName: string; managementNumber: string }) => void) => () => void;
 }
 
@@ -28,6 +33,8 @@ contextBridge.exposeInMainWorld('electron', {
   generateQRCodes: (params: { attendees: any[]; outputDir: string }) =>
     ipcRenderer.invoke('generator:generate-qr', params),
   openFolder: (folderPath: string) => ipcRenderer.invoke('generator:open-folder', folderPath),
+  verifyOutput: (params: { outputDir: string; manifestPath?: string }) =>
+    ipcRenderer.invoke('generator:verify-output', params),
   onProgress: (callback: (progress: any) => void) => {
     const handler = (_event: any, data: any) => callback(data);
     ipcRenderer.on('generator:progress', handler);

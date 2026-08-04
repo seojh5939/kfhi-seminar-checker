@@ -5,6 +5,7 @@ import { ExcelParser } from '../services/excelParser';
 import { ExcelValidator } from '../services/excelValidator';
 import { QRGeneratorEngine } from '../services/qrGenerator';
 import { ManifestExporter } from '../services/manifestExporter';
+import { QRVerifier } from '../services/qrVerifier';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -143,3 +144,19 @@ ipcMain.handle('generator:open-folder', async (_event, folderPath: string) => {
     shell.openPath(folderPath);
   }
 });
+
+ipcMain.handle(
+  'generator:verify-output',
+  async (_event, { outputDir, manifestPath }: { outputDir: string; manifestPath?: string }) => {
+    try {
+      const verifier = new QRVerifier();
+      const result = await verifier.verifyOutputDir(outputDir, manifestPath);
+      return { success: true, summary: result };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || 'QR 코드 검증 중 오류가 발생했습니다.',
+      };
+    }
+  }
+);
