@@ -206,7 +206,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', padding: '24px', backgroundColor: '#0f172a', color: '#f8fafc', minHeight: '100vh', position: 'relative' }}>
+    <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', padding: '24px', backgroundColor: '#0f172a', color: '#f8fafc', width: '100%', minHeight: '100vh', boxSizing: 'border-box', margin: 0, position: 'relative' }}>
       {/* 헤더 */}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #334155' }}>
         <div>
