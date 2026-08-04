@@ -27,6 +27,8 @@ export const App: React.FC = () => {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [showHistoryToggle, setShowHistoryToggle] = useState<boolean>(false);
+
   const [currentResult, setCurrentResult] = useState<{
     type: 'SUCCESS' | 'DUPLICATE' | 'ERROR';
     message: string;
@@ -65,7 +67,7 @@ export const App: React.FC = () => {
     if (record.isDuplicate) {
       setCurrentResult({
         type: 'DUPLICATE',
-        message: `⚠️ [중복 입장] ${record.name} (${record.affiliation}) 님은 이미 처리되었습니다.`,
+        message: `[중복 입장] ${record.name} (${record.affiliation}) 님은 이미 처리되었습니다.`,
         record,
       });
     } else {
@@ -134,7 +136,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', padding: '24px', backgroundColor: '#0f172a', color: '#f8fafc', minHeight: '100vh' }}>
+    <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', padding: '24px', backgroundColor: '#0f172a', color: '#f8fafc', minHeight: '100vh', position: 'relative' }}>
       {/* 헤더 */}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #334155' }}>
         <div>
@@ -176,7 +178,7 @@ export const App: React.FC = () => {
         )}
       </header>
 
-      {/* 장소 미설정 모달/폼 */}
+      {/* 장소 미설정 폼 */}
       {!isLocationSet ? (
         <div style={{ maxWidth: '400px', margin: '60px auto', backgroundColor: '#1e293b', padding: '32px', borderRadius: '12px', textAlign: 'center' }}>
           <h2 style={{ fontSize: '18px', marginBottom: '16px', color: '#f8fafc' }}>스캔 장소 등록</h2>
@@ -215,94 +217,133 @@ export const App: React.FC = () => {
           </form>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-          {/* 좌측: 실시간 카메라 ROI 스캐너 */}
-          <div>
-            <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '12px', marginBottom: '16px' }}>
-              <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#cbd5e1' }}>초고속 QR 라이브 스캔</h3>
-              <Scanner
-                locationName={locationName}
-                onScanSuccess={handleScanSuccess}
-                onScanError={handleScanError}
-              />
-            </div>
+        <div style={{ maxWidth: '640px', margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          {/* QR 스캔 영역 (가운데 정렬) */}
+          <div style={{ width: '100%', backgroundColor: '#1e293b', padding: '24px', borderRadius: '16px', boxSizing: 'border-box', marginBottom: '20px', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#38bdf8', textAlign: 'center', fontWeight: 'bold' }}>
+              명찰의 QR코드를 카메라에 보여주세요
+            </h3>
+            <Scanner
+              locationName={locationName}
+              onScanSuccess={handleScanSuccess}
+              onScanError={handleScanError}
+            />
+          </div>
 
-            {/* 3초 환영/경고 팝업 배너 (시인성 강화) */}
-            {currentResult && (
-              <div
-                style={{
-                  padding: '20px 24px',
-                  borderRadius: '12px',
-                  fontWeight: 'bold',
-                  fontSize: '18px',
-                  textAlign: 'center',
-                  backgroundColor:
-                    currentResult.type === 'SUCCESS'
-                      ? '#065f46'
-                      : currentResult.type === 'DUPLICATE'
-                      ? '#854d0e'
-                      : '#991b1b',
-                  color: 'white',
-                  border:
-                    currentResult.type === 'SUCCESS'
-                      ? '2px solid #34d399'
-                      : currentResult.type === 'DUPLICATE'
-                      ? '2px solid #facc15'
-                      : '2px solid #fca5a5',
-                  boxShadow: '0 12px 20px -3px rgba(0, 0, 0, 0.5)',
-                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                  animation: 'pulse 2s infinite',
-                }}
-              >
-                {currentResult.message}
+          {/* 최근 스캔기록 하단 배치 + Toggle 버튼 */}
+          <div style={{ width: '100%', backgroundColor: '#1e293b', borderRadius: '12px', overflow: 'hidden' }}>
+            <button
+              onClick={() => setShowHistoryToggle((prev) => !prev)}
+              style={{
+                width: '100%',
+                padding: '14px 20px',
+                backgroundColor: '#334155',
+                color: '#f8fafc',
+                border: 'none',
+                fontSize: '15px',
+                fontWeight: 'bold',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                cursor: 'pointer',
+              }}
+            >
+              <span>📋 최근 스캔 기록 ({scanHistory.length} 명)</span>
+              <span>{showHistoryToggle ? '▲ 접기' : '▼ 펼치기'}</span>
+            </button>
+
+            {showHistoryToggle && (
+              <div style={{ padding: '16px', maxHeight: '300px', overflowY: 'auto' }}>
+                {scanHistory.length === 0 ? (
+                  <div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>
+                    스캔된 기록이 아직 없습니다.
+                  </div>
+                ) : (
+                  scanHistory.map((item, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        padding: '12px',
+                        backgroundColor: '#0f172a',
+                        borderRadius: '8px',
+                        marginBottom: '8px',
+                        borderLeft: item.isDuplicate ? '4px solid #eab308' : '4px solid #10b981',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 'bold', fontSize: '15px' }}>
+                          {item.name} <span style={{ fontSize: '12px', color: '#94a3b8' }}>({item.affiliation} {item.title})</span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                          관리번호: {item.managementNumber} | {item.scannedAt}
+                        </div>
+                      </div>
+                      {item.isDuplicate && (
+                        <span style={{ backgroundColor: '#854d0e', color: '#fef08a', fontSize: '11px', padding: '2px 6px', borderRadius: '4px' }}>
+                          중복
+                        </span>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             )}
           </div>
+        </div>
+      )}
 
-          {/* 우측: 방금 인식된 리스트 이력 */}
-          <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '12px' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#cbd5e1', display: 'flex', justifyContent: 'space-between' }}>
-              <span>최근 스캔 기록</span>
-              <span style={{ color: '#38bdf8' }}>총 {scanHistory.length} 명</span>
-            </h3>
-
-            <div style={{ maxHeight: '480px', overflowY: 'auto' }}>
-              {scanHistory.length === 0 ? (
-                <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
-                  스캔된 기록이 아직 없습니다.
-                </div>
-              ) : (
-                scanHistory.map((item, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      padding: '12px',
-                      backgroundColor: '#0f172a',
-                      borderRadius: '8px',
-                      marginBottom: '8px',
-                      borderLeft: item.isDuplicate ? '4px solid #eab308' : '4px solid #10b981',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 'bold', fontSize: '15px' }}>
-                        {item.name} <span style={{ fontSize: '12px', color: '#94a3b8' }}>({item.affiliation} {item.title})</span>
-                      </div>
-                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                        관리번호: {item.managementNumber} | {item.scannedAt}
-                      </div>
-                    </div>
-                    {item.isDuplicate && (
-                      <span style={{ backgroundColor: '#854d0e', color: '#fef08a', fontSize: '11px', padding: '2px 6px', borderRadius: '4px' }}>
-                        중복
-                      </span>
-                    )}
-                  </div>
-                ))
-              )}
+      {/* 대형 전면 팝업 모달 (화면 중앙 정렬, 큼직한 글씨) */}
+      {currentResult && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '24px',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div
+            style={{
+              backgroundColor:
+                currentResult.type === 'SUCCESS'
+                  ? '#064e3b'
+                  : currentResult.type === 'DUPLICATE'
+                  ? '#713f12'
+                  : '#7f1d1d',
+              border:
+                currentResult.type === 'SUCCESS'
+                  ? '4px solid #34d399'
+                  : currentResult.type === 'DUPLICATE'
+                  ? '4px solid #facc15'
+                  : '4px solid #fca5a5',
+              color: 'white',
+              padding: '40px 32px',
+              borderRadius: '24px',
+              maxWidth: '650px',
+              width: '90%',
+              textAlign: 'center',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
+            }}
+          >
+            <div style={{ fontSize: '32px', fontWeight: '900', lineHeight: 1.4, wordBreak: 'keep-all' }}>
+              {currentResult.message}
             </div>
+            {currentResult.record && (
+              <div style={{ marginTop: '20px', fontSize: '18px', color: '#e2e8f0', backgroundColor: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '10px' }}>
+                방문장소: {currentResult.record.location} | 시각: {currentResult.record.scannedAt}
+              </div>
+            )}
           </div>
         </div>
       )}
