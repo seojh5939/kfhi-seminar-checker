@@ -66,7 +66,7 @@ export const App: React.FC = () => {
       return;
     }
 
-    // 바탕화면에 QR출입기록_장소명_날짜.csv 자동 저장
+    // 바탕화면에 방문기록_장소명_년월일시분초.csv 자동 저장
     if (window.electronAPI?.exportDesktopBackup) {
       const res = await window.electronAPI.exportDesktopBackup(scanHistory, locationName);
       if (res.success) {
@@ -80,6 +80,11 @@ export const App: React.FC = () => {
       const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
       alert(`[테스트] 방문 기록이 바탕화면에 저장되었습니다. (저장 파일명: 방문기록_${locationName || '기본장소'}_${timestamp}.csv)`);
     }
+
+    // 장소 변경 시 이전 장소의 출입기록 삭제 및 로컬 스토리지 초기화
+    setScanHistory([]);
+    localStorage.removeItem('kfhi_scan_history');
+    localStorage.removeItem('kfhi_reader_location');
 
     setShowSettingsModal(false);
     setIsLocationSet(false);
