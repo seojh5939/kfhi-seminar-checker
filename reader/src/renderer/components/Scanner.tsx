@@ -181,10 +181,23 @@ export const Scanner: React.FC<ScannerProps> = ({
     };
   }, []);
 
-  const lastScannedIdRef = useRef<string | null>(null);
+  const lastScannedCipherRef = useRef<string | null>(null);
   const lastScannedTimeRef = useRef<number>(0);
 
   const handleDecodedQr = async (cipherText: string) => {
+    const now = Date.now();
+    const isSameCipher = lastScannedCipherRef.current === cipherText;
+    const timeDiff = now - lastScannedTimeRef.current;
+
+    // 1. [동일 QR (성공/실패 공통)] 3초 이내에 연속으로 대어진 경우 ➡️ 반응 무시 (소리/팝업 안남)
+    if (isSameCipher && timeDiff < 3000) {
+      return;
+    }
+
+    // 암호문 및 시각 갱신 (다른 QR이면 즉시 시도)
+    lastScannedCipherRef.current = cipherText;
+    lastScannedTimeRef.current = now;
+
     try {
       let payload: any = null;
 
@@ -202,23 +215,10 @@ export const Scanner: React.FC<ScannerProps> = ({
         }
       }
 
-      const now = Date.now();
-      const isSameQr = lastScannedIdRef.current === payload.id;
-      const timeDiff = now - lastScannedTimeRef.current;
-
-      // 1. [동일 QR] 3초 이내에 또 대어진 경우 ➡️ 연속 스캔 반응 무시 (소리/팝업 안남)
-      if (isSameQr && timeDiff < 3000) {
-        return;
-      }
-
       // 2. [중복 판정] 과거/당일 누적 기록(scanHistory) 중 동일 관리번호가 단 한 번이라도 존재하는지 체크
       const alreadyRegistered = scanHistoryRef.current.some(
         (r) => r.managementNumber === payload.id
       );
-
-      // 스캔 이력 타임스탬프 및 ID 갱신
-      lastScannedIdRef.current = payload.id;
-      lastScannedTimeRef.current = now;
 
       const record: ScanRecord = {
         managementNumber: payload.id,
@@ -239,7 +239,7 @@ export const Scanner: React.FC<ScannerProps> = ({
       onScanSuccess(record);
     } catch (err: any) {
       playSound('ERROR');
-      onScanError('위변조되거나 등록되지 않은 QR 코드입니다.');
+      onScanError('등록되지 않은 QR입니다. 안내데스크에 방문 부탁드립니다.');
     }
   };
 
