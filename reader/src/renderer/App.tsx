@@ -7,6 +7,7 @@ declare global {
     electronAPI?: {
       selectOutputDir: () => Promise<string | null>;
       exportCsv: (records: any[], targetPath: string) => Promise<{ success: boolean; count?: number; error?: string }>;
+      exportDesktopBackup: (records: any[], locationName: string) => Promise<{ success: boolean; filePath: string; fileName: string; count: number; error?: string }>;
       decryptPayload: (cipherText: string, secretKey?: string) => Promise<{ success: boolean; payload?: any; error?: string }>;
       openFolder: (folderPath: string) => Promise<void>;
     };
@@ -28,7 +29,11 @@ export const App: React.FC = () => {
   });
 
   const [showHistoryToggle, setShowHistoryToggle] = useState<boolean>(false);
+  const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
+
+  // 비밀번호 인증 모달 전용 상태 (CSV 내보내기 vs 인증내역 초기화)
   const [showPasswordModal, setShowPasswordModal] = useState<boolean>(false);
+  const [authPurpose, setAuthPurpose] = useState<'CSV' | 'RESET'>('CSV');
   const [passwordInput, setPasswordInput] = useState<string>('');
   const [passwordError, setPasswordError] = useState<string>('');
 
@@ -54,10 +59,38 @@ export const App: React.FC = () => {
     setIsLocationSet(true);
   };
 
-  const handleLocationReset = () => {
-    if (confirm('장소를 변경하시겠습니까? 기존 스캔 기록은 유지됩니다.')) {
-      setIsLocationSet(false);
+  // 장소 변경 처리 (1차 팝업 ➡️ 바탕화면에 자동 저장 ➡️ 저장위치 팝업 ➡️ 장소입력창 이동)
+  const handleLocationResetWithBackup = async () => {
+    if (!confirm('장소 변경을 진행하시겠습니까?')) {
+      return;
     }
+
+    // 바탕화면에 QR출입기록_장소명_날짜.csv 자동 저장
+    if (window.electronAPI?.exportDesktopBackup) {
+      const res = await window.electronAPI.exportDesktopBackup(scanHistory, locationName);
+      if (res.success) {
+        alert(`방문 기록이 바탕화면에 정상 저장되었습니다.\n\n저장 위치: ${res.filePath}`);
+      } else {
+        alert(`바탕화면 자동 저장 중 오류가 발생했습니다: ${res.error}`);
+      }
+    } else {
+      // 웹 테스트 fallback
+      alert(`[테스트] 방문 기록이 바탕화면에 저장되었습니다. (저장 파일명: QR출입기록_${locationName}_${new Date().toISOString().substring(0, 10)}.csv)`);
+    }
+
+    setShowSettingsModal(false);
+    setIsLocationSet(false);
+  };
+
+  // QR 인증 내역 초기화 처리 (1차 경고 팝업 ➡️ 2차 2026-NDS 비밀번호 검증 ➡️ 초기화)
+  const handleResetHistoryClick = () => {
+    if (!confirm('정말 초기화하시겠습니까? 그동안의 인증기록이 모두 사라집니다.')) {
+      return;
+    }
+    setAuthPurpose('RESET');
+    setPasswordInput('');
+    setPasswordError('');
+    setShowPasswordModal(true);
   };
 
   const popupTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -110,6 +143,7 @@ export const App: React.FC = () => {
       alert('내보낼 방문 기록이 없습니다.');
       return;
     }
+    setAuthPurpose('CSV');
     setPasswordInput('');
     setPasswordError('');
     setShowPasswordModal(true);
@@ -124,33 +158,42 @@ export const App: React.FC = () => {
 
     setShowPasswordModal(false);
 
-    if (window.electronAPI) {
-      const filePath = await window.electronAPI.selectOutputDir();
-      if (filePath) {
-        const result = await window.electronAPI.exportCsv(scanHistory, filePath);
-        if (result.success) {
-          alert(`총 ${result.count}건의 방문 기록이 CSV로 정상 내보내기 되었습니다.`);
-        } else {
-          alert(`CSV 내보내기 실패: ${result.error}`);
-        }
-      }
+    if (authPurpose === 'RESET') {
+      // 1. QR 인증내역 초기화 실행
+      setScanHistory([]);
+      localStorage.removeItem('kfhi_scan_history');
+      setShowSettingsModal(false);
+      alert('인증 내역이 성공적으로 초기화되었습니다.');
     } else {
-      // 웹 브라우저 테스트 fallback
-      const header = '관리번호,성명,소속,직함,방문장소,방문시각,중복방문여부\n';
-      const rows = scanHistory
-        .map(
-          (r) =>
-            `"${r.managementNumber}","${r.name}","${r.affiliation}","${r.title}","${r.location}","${r.scannedAt}","${r.isDuplicate ? '중복' : '정상'}"`
-        )
-        .join('\n');
-      const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `방문기록_${locationName}_${new Date().toISOString().substring(0, 10)}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // 2. CSV 내보내기 다운로드 실행
+      if (window.electronAPI) {
+        const filePath = await window.electronAPI.selectOutputDir();
+        if (filePath) {
+          const result = await window.electronAPI.exportCsv(scanHistory, filePath);
+          if (result.success) {
+            alert(`총 ${result.count}건의 방문 기록이 CSV로 정상 내보내기 되었습니다.`);
+          } else {
+            alert(`CSV 내보내기 실패: ${result.error}`);
+          }
+        }
+      } else {
+        // 웹 브라우저 테스트 fallback
+        const header = '관리번호,성명,소속,직함,방문장소,방문시각,중복방문여부\n';
+        const rows = scanHistory
+          .map(
+            (r) =>
+              `"${r.managementNumber}","${r.name}","${r.affiliation}","${r.title}","${r.location}","${r.scannedAt}","${r.isDuplicate ? '중복' : '정상'}"`
+          )
+          .join('\n');
+        const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `방문기록_${locationName}_${new Date().toISOString().substring(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
     }
   };
 
@@ -167,31 +210,21 @@ export const App: React.FC = () => {
         {isLocationSet && (
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
-              onClick={handleExportCsvClick}
+              onClick={() => setShowSettingsModal(true)}
               style={{
-                backgroundColor: '#10b981',
-                color: 'white',
-                border: 'none',
+                backgroundColor: '#334155',
+                color: '#f8fafc',
+                border: '1px solid #475569',
                 padding: '8px 16px',
                 borderRadius: '6px',
                 fontWeight: 'bold',
                 cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
               }}
             >
-              CSV 내보내기 (참석자: {uniqueAttendeeCount}명)
-            </button>
-            <button
-              onClick={handleLocationReset}
-              style={{
-                backgroundColor: '#475569',
-                color: 'white',
-                border: 'none',
-                padding: '8px 12px',
-                borderRadius: '6px',
-                cursor: 'pointer',
-              }}
-            >
-              장소 변경
+              ⚙️ 설정
             </button>
           </div>
         )}
@@ -315,6 +348,126 @@ export const App: React.FC = () => {
         </div>
       )}
 
+      {/* 설정 팝업 모달 */}
+      {showSettingsModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9990,
+            padding: '24px',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#1e293b',
+              padding: '32px',
+              borderRadius: '20px',
+              width: '100%',
+              maxWidth: '480px',
+              border: '1px solid #475569',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
+              position: 'relative',
+            }}
+          >
+            {/* 좌상단 뒤로가기 버튼 */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', paddingBottom: '12px', borderBottom: '1px solid #334155' }}>
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                style={{
+                  backgroundColor: '#334155',
+                  color: '#f8fafc',
+                  border: 'none',
+                  padding: '8px 14px',
+                  borderRadius: '6px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                }}
+              >
+                ⬅️ 뒤로가기
+              </button>
+              <h2 style={{ margin: 0, fontSize: '18px', color: '#38bdf8', fontWeight: 'bold' }}>⚙️ 인식기 설정</h2>
+              <div style={{ width: '80px' }} />
+            </div>
+
+            {/* 설정 메뉴 버튼 3종 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <button
+                onClick={handleExportCsvClick}
+                style={{
+                  padding: '16px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  backgroundColor: '#10b981',
+                  color: 'white',
+                  fontWeight: 'bold',
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <span>📥 CSV 파일 내보내기</span>
+                <span style={{ fontSize: '13px', opacity: 0.8 }}>({uniqueAttendeeCount} 명)</span>
+              </button>
+
+              <button
+                onClick={handleResetHistoryClick}
+                style={{
+                  padding: '16px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  backgroundColor: '#991b1b',
+                  color: 'white',
+                  fontWeight: 'bold',
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <span>🗑️ QR 인증내역 초기화</span>
+                <span style={{ fontSize: '13px', opacity: 0.8 }}>비밀번호 필요</span>
+              </button>
+
+              <button
+                onClick={handleLocationResetWithBackup}
+                style={{
+                  padding: '16px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  backgroundColor: '#0284c7',
+                  color: 'white',
+                  fontWeight: 'bold',
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <span>📍 장소 변경</span>
+                <span style={{ fontSize: '13px', opacity: 0.8 }}>바탕화면 자동 백업</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 관리자 비밀번호 검증 모달 */}
       {showPasswordModal && (
         <div
@@ -400,13 +553,13 @@ export const App: React.FC = () => {
                     padding: '12px',
                     borderRadius: '8px',
                     border: 'none',
-                    backgroundColor: '#10b981',
+                    backgroundColor: authPurpose === 'RESET' ? '#dc2626' : '#10b981',
                     color: 'white',
                     fontWeight: 'bold',
                     cursor: 'pointer',
                   }}
                 >
-                  인증 및 다운로드
+                  {authPurpose === 'RESET' ? '인증 및 초기화' : '인증 및 다운로드'}
                 </button>
               </div>
             </form>

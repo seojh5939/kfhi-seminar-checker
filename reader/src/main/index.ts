@@ -90,6 +90,29 @@ ipcMain.handle('reader:export-csv', async (_event, { records, targetPath }: { re
   }
 });
 
+// 바탕화면(Desktop)에 자동 백업 저장 IPC 핸들러
+ipcMain.handle('reader:export-desktop-backup', async (_event, { records, locationName }: { records: any[]; locationName: string }) => {
+  try {
+    const desktopDir = app.getPath('desktop');
+    const safeLocName = (locationName || '기본장소').replace(/[/\\?%*:|"<>]/g, '_');
+    const dateStr = new Date().toISOString().substring(0, 10);
+    const fileName = `QR출입기록_${safeLocName}_${dateStr}.csv`;
+    const targetPath = path.join(desktopDir, fileName);
+
+    const header = '관리번호,성명,소속,직함,방문장소,방문시각,중복방문여부\n';
+    const rows = (records || []).map((r) =>
+      `"${r.managementNumber}","${r.name}","${r.affiliation}","${r.title}","${r.location}","${r.scannedAt}","${r.isDuplicate ? '중복' : '정상'}"`
+    ).join('\n');
+
+    const csvContent = '\uFEFF' + header + rows;
+    fs.writeFileSync(targetPath, csvContent, 'utf8');
+
+    return { success: true, filePath: targetPath, fileName, count: records.length };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('reader:open-folder', async (_event, folderPath: string) => {
   if (folderPath && fs.existsSync(folderPath)) {
     shell.openPath(folderPath);
