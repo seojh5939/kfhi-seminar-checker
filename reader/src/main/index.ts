@@ -73,7 +73,7 @@ function getFormattedTimestamp(): string {
 // IPC Handlers
 ipcMain.handle('reader:select-output-dir', async (_event, locationName?: string) => {
   if (!mainWindow) return null;
-  const safeLocName = (locationName || '전체').replace(/[/\\?%*:|"<>]/g, '_');
+  const safeLocName = (locationName || '장소미지정').replace(/[/\\?%*:|"<>]/g, '_');
   const timestamp = getFormattedTimestamp();
   const defaultFileName = `방문기록_${safeLocName}_${timestamp}.csv`;
 

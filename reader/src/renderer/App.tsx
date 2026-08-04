@@ -5,7 +5,7 @@ import { ScanRecord } from 'shared';
 declare global {
   interface Window {
     electronAPI?: {
-      selectOutputDir: () => Promise<string | null>;
+      selectOutputDir: (locationName?: string) => Promise<string | null>;
       exportCsv: (records: any[], targetPath: string) => Promise<{ success: boolean; count?: number; error?: string }>;
       exportDesktopBackup: (records: any[], locationName: string) => Promise<{ success: boolean; filePath: string; fileName: string; count: number; error?: string }>;
       decryptPayload: (cipherText: string, secretKey?: string) => Promise<{ success: boolean; payload?: any; error?: string }>;
@@ -168,8 +168,9 @@ export const App: React.FC = () => {
       alert('인증 내역이 성공적으로 초기화되었습니다.');
     } else {
       // 2. CSV 내보내기 다운로드 실행
+      const currentLoc = locationName || localStorage.getItem('kfhi_reader_location') || '장소미지정';
       if (window.electronAPI) {
-        const filePath = await window.electronAPI.selectOutputDir();
+        const filePath = await window.electronAPI.selectOutputDir(currentLoc);
         if (filePath) {
           const result = await window.electronAPI.exportCsv(scanHistory, filePath);
           if (result.success) {
@@ -180,6 +181,10 @@ export const App: React.FC = () => {
         }
       } else {
         // 웹 브라우저 테스트 fallback
+        const now = new Date();
+        const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+        const fileName = `방문기록_${currentLoc}_${timestamp}.csv`;
+
         const header = '관리번호,성명,소속,직함,방문장소,방문시각,중복방문여부\n';
         const rows = scanHistory
           .map(
@@ -191,7 +196,7 @@ export const App: React.FC = () => {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.setAttribute('download', `방문기록_${locationName}_${new Date().toISOString().substring(0, 10)}.csv`);
+        link.setAttribute('download', fileName);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
