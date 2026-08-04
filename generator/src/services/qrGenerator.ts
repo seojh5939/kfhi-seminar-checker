@@ -39,16 +39,8 @@ export class QRGeneratorEngine {
 
     for (let i = 0; i < total; i++) {
       const attendee = attendees[i];
-      const sanitizedAffiliation = (attendee.affiliation || '미소속').replace(/[\\/:*?"<>|]/g, '_');
-      const affiliationDir = path.join(absoluteOutputDir, sanitizedAffiliation);
-
-      // 파일 저장 디렉터리 동기 보장 (Race Condition 완전 차단)
-      if (!fs.existsSync(affiliationDir)) {
-        fs.mkdirSync(affiliationDir, { recursive: true });
-      }
-
       const fileName = `${attendee.managementNumber}.png`;
-      const filePath = path.join(affiliationDir, fileName);
+      const filePath = path.join(absoluteOutputDir, fileName);
 
       // 암호화 문자열 생성
       const cipherText = this.cryptoEngine.encryptAttendee(attendee);
@@ -66,7 +58,7 @@ export class QRGeneratorEngine {
         name: attendee.name,
         affiliation: attendee.affiliation,
         title: attendee.title,
-        fileName: path.join(sanitizedAffiliation, fileName),
+        fileName: fileName,
         createdAt,
       });
 
