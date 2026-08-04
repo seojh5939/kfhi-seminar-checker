@@ -7,7 +7,41 @@
     "build": "tsc && vite build",
     "dev": "vite",
     "start": "electron .",
-    "test": "jest"
+    "test": "jest",
+    "package:win": "pnpm build && electron-builder --win nsis portable"
+  },
+  "build": {
+    "appId": "com.kfhi.reader",
+    "productName": "기아대책 출입관리 QR 인식기",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "기아대책 QR 인식기"
+    }
   },
   "dependencies": {
     "qr-scanner": "^1.4.2",

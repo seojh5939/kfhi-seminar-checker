@@ -7,7 +7,41 @@
     "build": "tsc && vite build",
     "dev": "vite",
     "start": "electron .",
-    "test": "jest"
+    "test": "jest",
+    "package:win": "pnpm build && electron-builder --win nsis portable"
+  },
+  "build": {
+    "appId": "com.kfhi.generator",
+    "productName": "기아대책 명찰 QR 생성기",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "기아대책 명찰 QR 생성기"
+    }
   },
   "dependencies": {
     "exceljs": "^4.4.0",
