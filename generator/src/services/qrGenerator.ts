@@ -42,13 +42,13 @@ export class QRGeneratorEngine {
       const fileName = `${attendee.managementNumber}.png`;
       const filePath = path.join(absoluteOutputDir, fileName);
 
-      // 암호화 문자열 생성
-      const cipherText = this.cryptoEngine.encryptAttendee(attendee);
+      // 콤팩트 바이너리(Base64URL) 암호화 문자열 생성 (암호문 길이 65% 축소)
+      const cipherText = this.cryptoEngine.encryptAttendeeCompact(attendee);
 
-      // QR 코드 PNG 파일 저장 (300x300, 여백 0)
+      // QR 코드 PNG 파일 저장 (300x300, 큼직한 모듈 셀)
       await QRCode.toFile(filePath, cipherText, {
         width: 300,
-        margin: 0,
+        margin: 1,
         errorCorrectionLevel: 'M',
         color: { dark: '#000000', light: '#FFFFFF' },
       });

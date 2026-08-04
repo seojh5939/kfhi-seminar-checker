@@ -1,0 +1,136 @@
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import * as path from 'path';
+import * as fs from 'fs';
+
+let mainWindow: BrowserWindow | null = null;
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1080,
+    height: 750,
+    minWidth: 850,
+    minHeight: 600,
+    title: '기아대책 행사 QR 인식기 (Reader)',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  mainWindow.setMenu(null);
+
+  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+
+  if (isDev && process.env.VITE_DEV_SERVER_URL) {
+    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+  } else {
+    const htmlPath = path.join(__dirname, '../renderer/index.html');
+    if (fs.existsSync(htmlPath)) {
+      mainWindow.loadFile(htmlPath);
+    } else {
+      mainWindow.loadFile(path.join(__dirname, '../../dist/renderer/index.html'));
+    }
+  }
+}
+
+app.whenReady().then(() => {
+  createWindow();
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+
+import { CryptoEngine } from 'shared';
+
+ipcMain.handle('reader:decrypt-payload', async (_event, { cipherText, secretKey }: { cipherText: string; secretKey?: string }) => {
+  try {
+    const engine = new CryptoEngine(secretKey);
+    const payload = engine.decryptToPayload(cipherText);
+    return { success: true, payload };
+  } catch (error: any) {
+    return { success: false, error: error.message || '복호화 실패' };
+  }
+});
+
+// 년월일시분초 포맷팅 유틸리티 (예: 20260804_211820)
+function getFormattedTimestamp(): string {
+  const now = new Date();
+  const YYYY = now.getFullYear();
+  const MM = String(now.getMonth() + 1).padStart(2, '0');
+  const DD = String(now.getDate()).padStart(2, '0');
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  return `${YYYY}${MM}${DD}_${hh}${mm}${ss}`;
+}
+
+// IPC Handlers
+ipcMain.handle('reader:select-output-dir', async (_event, locationName?: string) => {
+  if (!mainWindow) return null;
+  const safeLocName = (locationName || '장소미지정').replace(/[/\\?%*:|"<>]/g, '_');
+  const timestamp = getFormattedTimestamp();
+  const defaultFileName = `방문기록_${safeLocName}_${timestamp}.csv`;
+
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: '방문 기록 CSV 파일 내보내기 위치 지정',
+    defaultPath: defaultFileName,
+    filters: [{ name: 'CSV Files', extensions: ['csv'] }],
+  });
+
+  if (result.canceled || !result.filePath) {
+    return null;
+  }
+  return result.filePath;
+});
+
+ipcMain.handle('reader:export-csv', async (_event, { records, targetPath }: { records: any[]; targetPath: string }) => {
+  try {
+    const header = '관리번호,성명,소속,직함,방문장소,방문시각,중복방문여부\n';
+    const rows = records.map((r) =>
+      `"${r.managementNumber}","${r.name}","${r.affiliation}","${r.title}","${r.location}","${r.scannedAt}","${r.isDuplicate ? '중복' : '정상'}"`
+    ).join('\n');
+
+    // UTF-8 BOM (\uFEFF) 추가로 Excel 한글 깨짐 방지
+    const csvContent = '\uFEFF' + header + rows;
+    fs.writeFileSync(targetPath, csvContent, 'utf8');
+
+    return { success: true, count: records.length };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+// 바탕화면(Desktop)에 자동 백업 저장 IPC 핸들러 (네이밍 규칙: 방문기록_장소명_년월일시분초.csv)
+ipcMain.handle('reader:export-desktop-backup', async (_event, { records, locationName }: { records: any[]; locationName: string }) => {
+  try {
+    const desktopDir = app.getPath('desktop');
+    const safeLocName = (locationName || '기본장소').replace(/[/\\?%*:|"<>]/g, '_');
+    const timestamp = getFormattedTimestamp();
+    const fileName = `방문기록_${safeLocName}_${timestamp}.csv`;
+    const targetPath = path.join(desktopDir, fileName);
+
+    const header = '관리번호,성명,소속,직함,방문장소,방문시각,중복방문여부\n';
+    const rows = (records || []).map((r) =>
+      `"${r.managementNumber}","${r.name}","${r.affiliation}","${r.title}","${r.location}","${r.scannedAt}","${r.isDuplicate ? '중복' : '정상'}"`
+    ).join('\n');
+
+    const csvContent = '\uFEFF' + header + rows;
+    fs.writeFileSync(targetPath, csvContent, 'utf8');
+
+    return { success: true, filePath: targetPath, fileName, count: records.length };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('reader:open-folder', async (_event, folderPath: string) => {
+  if (folderPath && fs.existsSync(folderPath)) {
+    shell.openPath(folderPath);
+  }
+});
