@@ -8,6 +8,9 @@
   ],
   "scripts": {
     "build:shared": "pnpm --filter shared build",
+    "build:generator": "pnpm --filter generator build",
+    "start:generator": "pnpm --filter generator start",
+    "dev:generator": "pnpm --filter generator dev",
     "test:shared": "pnpm --filter shared test",
     "test": "pnpm test:shared"
   },
