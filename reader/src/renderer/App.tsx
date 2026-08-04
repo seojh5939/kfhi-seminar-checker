@@ -75,7 +75,9 @@ export const App: React.FC = () => {
       }
     } else {
       // 웹 테스트 fallback
-      alert(`[테스트] 방문 기록이 바탕화면에 저장되었습니다. (저장 파일명: QR출입기록_${locationName}_${new Date().toISOString().substring(0, 10)}.csv)`);
+      const now = new Date();
+      const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+      alert(`[테스트] 방문 기록이 바탕화면에 저장되었습니다. (저장 파일명: 방문기록_${locationName || '기본장소'}_${timestamp}.csv)`);
     }
 
     setShowSettingsModal(false);

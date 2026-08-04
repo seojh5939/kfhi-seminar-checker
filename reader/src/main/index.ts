@@ -58,12 +58,28 @@ ipcMain.handle('reader:decrypt-payload', async (_event, { cipherText, secretKey 
   }
 });
 
+// 년월일시분초 포맷팅 유틸리티 (예: 20260804_211820)
+function getFormattedTimestamp(): string {
+  const now = new Date();
+  const YYYY = now.getFullYear();
+  const MM = String(now.getMonth() + 1).padStart(2, '0');
+  const DD = String(now.getDate()).padStart(2, '0');
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  return `${YYYY}${MM}${DD}_${hh}${mm}${ss}`;
+}
+
 // IPC Handlers
-ipcMain.handle('reader:select-output-dir', async () => {
+ipcMain.handle('reader:select-output-dir', async (_event, locationName?: string) => {
   if (!mainWindow) return null;
+  const safeLocName = (locationName || '전체').replace(/[/\\?%*:|"<>]/g, '_');
+  const timestamp = getFormattedTimestamp();
+  const defaultFileName = `방문기록_${safeLocName}_${timestamp}.csv`;
+
   const result = await dialog.showSaveDialog(mainWindow, {
     title: '방문 기록 CSV 파일 내보내기 위치 지정',
-    defaultPath: `방문기록_${new Date().toISOString().substring(0, 10)}.csv`,
+    defaultPath: defaultFileName,
     filters: [{ name: 'CSV Files', extensions: ['csv'] }],
   });
 
@@ -90,13 +106,13 @@ ipcMain.handle('reader:export-csv', async (_event, { records, targetPath }: { re
   }
 });
 
-// 바탕화면(Desktop)에 자동 백업 저장 IPC 핸들러
+// 바탕화면(Desktop)에 자동 백업 저장 IPC 핸들러 (네이밍 규칙: 방문기록_장소명_년월일시분초.csv)
 ipcMain.handle('reader:export-desktop-backup', async (_event, { records, locationName }: { records: any[]; locationName: string }) => {
   try {
     const desktopDir = app.getPath('desktop');
     const safeLocName = (locationName || '기본장소').replace(/[/\\?%*:|"<>]/g, '_');
-    const dateStr = new Date().toISOString().substring(0, 10);
-    const fileName = `QR출입기록_${safeLocName}_${dateStr}.csv`;
+    const timestamp = getFormattedTimestamp();
+    const fileName = `방문기록_${safeLocName}_${timestamp}.csv`;
     const targetPath = path.join(desktopDir, fileName);
 
     const header = '관리번호,성명,소속,직함,방문장소,방문시각,중복방문여부\n';
