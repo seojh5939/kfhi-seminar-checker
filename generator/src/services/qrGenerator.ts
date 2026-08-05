@@ -39,8 +39,20 @@ export class QRGeneratorEngine {
 
     for (let i = 0; i < total; i++) {
       const attendee = attendees[i];
-      const fileName = `${attendee.managementNumber}.png`;
-      const filePath = path.join(absoluteOutputDir, fileName);
+      const sanitizedAffiliation = (attendee.affiliation || '').trim().replace(/[\\/:*?"<>|]/g, '_');
+      const targetDir = sanitizedAffiliation
+        ? path.join(absoluteOutputDir, sanitizedAffiliation)
+        : absoluteOutputDir;
+
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+
+      const fileNameOnly = `${attendee.managementNumber}.png`;
+      const filePath = path.join(targetDir, fileNameOnly);
+      const relativeFileName = sanitizedAffiliation
+        ? `${sanitizedAffiliation}/${fileNameOnly}`
+        : fileNameOnly;
 
       // 콤팩트 바이너리(Base64URL) 암호화 문자열 생성 (암호문 길이 65% 축소)
       const cipherText = this.cryptoEngine.encryptAttendeeCompact(attendee);
@@ -58,7 +70,7 @@ export class QRGeneratorEngine {
         name: attendee.name,
         affiliation: attendee.affiliation,
         title: attendee.title,
-        fileName: fileName,
+        fileName: relativeFileName,
         createdAt,
       });
 

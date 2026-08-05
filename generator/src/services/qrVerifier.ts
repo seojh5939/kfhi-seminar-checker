@@ -62,8 +62,12 @@ export class QRVerifier {
       if (cols.length < 5) continue;
 
       const [managementNumber, name, affiliation, title, rawFileName] = cols;
-      const fileName = path.basename(rawFileName); // 하위폴더 분리 대비 파일명만 추출
-      const pngPath = path.join(outputDir, fileName);
+      const fileName = path.basename(rawFileName); // 파일명만 추출
+      const relativePath = rawFileName.replace(/\//g, path.sep);
+      let pngPath = path.join(outputDir, relativePath);
+      if (!fs.existsSync(pngPath)) {
+        pngPath = path.join(outputDir, fileName);
+      }
 
       if (!fs.existsSync(pngPath)) {
         failCount++;

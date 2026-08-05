@@ -111,5 +111,9 @@ describe('QRGeneratorEngine 대량 생성 및 이미지 디코딩 무결성 유�
     expect(content[0]).toBe(0xef);
     expect(content[1]).toBe(0xbb);
     expect(content[2]).toBe(0xbf);
+
+    // Adobe InDesign 데이터 병합 호환 헤더 '@파일명' 포함 여부 검증
+    const csvString = content.toString('utf8');
+    expect(csvString).toContain('관리번호,성명,소속,직함,@파일명,생성일시');
   });
 });
