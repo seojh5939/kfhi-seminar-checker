@@ -120,8 +120,8 @@ ipcMain.handle(
         }
       );
 
-      const manifestPath = path.join(outputDir, 'manifest.csv');
-      ManifestExporter.exportToCsv(manifestRecords, manifestPath);
+      const manifestPath = path.join(outputDir, 'manifest.txt');
+      ManifestExporter.exportToTxt(manifestRecords, manifestPath);
 
       return {
         success: true,

@@ -33,31 +33,47 @@ export class QRVerifier {
    * 생성 폴더 내의 manifest.csv 및 QR PNG 파일들을 일괄 복호화 검증
    */
   public async verifyOutputDir(outputDir: string, manifestPath?: string): Promise<VerificationSummary> {
-    const targetManifest = manifestPath || path.join(outputDir, 'manifest.csv');
-
-    if (!fs.existsSync(targetManifest)) {
-      throw new Error(`매니페스트 파일(manifest.csv)을 찾을 수 없습니다: ${targetManifest}`);
+    let targetManifest = manifestPath;
+    if (!targetManifest) {
+      const txtManifest = path.join(outputDir, 'manifest.txt');
+      const csvManifest = path.join(outputDir, 'manifest.csv');
+      targetManifest = fs.existsSync(txtManifest) ? txtManifest : csvManifest;
     }
 
-    // CSV 파일 읽기 (UTF-8 BOM 제거)
-    const fileContent = fs.readFileSync(targetManifest, 'utf8').replace(/^\uFEFF/, '');
+    if (!fs.existsSync(targetManifest)) {
+      throw new Error(`매니페스트 파일(manifest.txt)을 찾을 수 없습니다: ${targetManifest}`);
+    }
+
+    // 파일 읽기 (UTF-16 LE 또는 UTF-8 읽기 및 BOM 제거)
+    let fileContent = '';
+    const buffer = fs.readFileSync(targetManifest);
+    if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
+      fileContent = buffer.toString('utf16le').replace(/^\uFEFF/, '');
+    } else {
+      fileContent = buffer.toString('utf8').replace(/^\uFEFF/, '');
+    }
+
     const lines = fileContent.split(/\r?\n/).filter((line) => line.trim() !== '');
 
     if (lines.length <= 1) {
       throw new Error('매니페스트 파일에 참석자 레코드가 존재하지 않습니다.');
     }
 
-    // 헤더 패싱 (관리번호,성명,소속,직함,파일명,생성일시)
     const items: VerificationItem[] = [];
     let successCount = 0;
     let failCount = 0;
 
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i];
-      // CSV 파싱 (큰따옴표 처리)
-      const cols = line.match(/(?:^|,)(?:"([^"]*)"|([^,]*))/g)?.map((col) =>
-        col.replace(/^,/, '').replace(/^"/, '').replace(/"$/, '').replace(/""/g, '"')
-      ) || [];
+      // Tab 탭 구분 또는 CSV 구분 파싱
+      let cols: string[] = [];
+      if (line.includes('\t')) {
+        cols = line.split('\t').map((c) => c.trim().replace(/^"/, '').replace(/"$/, ''));
+      } else {
+        cols = line.match(/(?:^|,)(?:"([^"]*)"|([^,]*))/g)?.map((col) =>
+          col.replace(/^,/, '').replace(/^"/, '').replace(/"$/, '').replace(/""/g, '"')
+        ) || [];
+      }
 
       if (cols.length < 5) continue;
 

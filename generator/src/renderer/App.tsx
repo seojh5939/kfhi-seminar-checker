@@ -128,7 +128,7 @@ export function App() {
       }
       setCompletedResult({
         count: validationResult.attendees.length,
-        manifestPath: `${outputDir}\\manifest.csv`,
+        manifestPath: `${outputDir}\\manifest.txt`,
         outputDir,
       });
     }
@@ -367,7 +367,7 @@ export function App() {
             QR코드 대량 생성 완료!
           </h2>
           <p className="subtitle" style={{ marginBottom: '20px' }}>
-            총 {completedResult.count}건의 암호화 QR 이미지 및 매니페스트 CSV가 정상 저장되었습니다.
+            총 {completedResult.count}건의 암호화 QR 이미지 및 매니페스트 TXT가 정상 저장되었습니다.
           </p>
 
           <div className="stat-grid" style={{ marginBottom: '20px' }}>
@@ -378,7 +378,7 @@ export function App() {
             <div className="stat-item">
               <div className="stat-label">매니페스트 파일</div>
               <div className="stat-value" style={{ fontSize: '14px', wordBreak: 'break-all' }}>
-                manifest.csv (UTF-8 BOM)
+                manifest.txt (UTF-16 LE)
               </div>
             </div>
           </div>
