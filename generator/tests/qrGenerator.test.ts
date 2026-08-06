@@ -112,9 +112,9 @@ describe('QRGeneratorEngine 대량 생성 및 이미지 디코딩 무결성 유�
     expect(buffer[0]).toBe(0xff);
     expect(buffer[1]).toBe(0xfe);
 
-    // Adobe InDesign 데이터 병합 호환 탭 구분 헤더 '@파일명' 포함 여부 검증
+    // Adobe InDesign 데이터 병합 호환 탭 구분 헤더 '#QR코드' 포함 및 열 순서 검증
     const txtString = buffer.toString('utf16le');
-    expect(txtString).toContain('관리번호\t성명\t소속\t직함\t@파일명\t생성일시');
-    expect(txtString).toContain('00001\t홍길동\t고양후원이사회\t목사\t00001.png\t2026-08-03 21:00:00');
+    expect(txtString).toContain('관리번호\t이사회명\t직함\t성명\t#QR코드');
+    expect(txtString).toContain('00001\t고양후원이사회\t목사\t홍길동\t00001.png');
   });
 });

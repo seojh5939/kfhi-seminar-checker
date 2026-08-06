@@ -12,15 +12,14 @@ export class ManifestExporter {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    // Adobe InDesign 탭 구분 TXT 데이터 병합 헤더 (이미지 칼럼명 '@' 접두사 적용)
-    const headers = ['관리번호', '성명', '소속', '직함', '@파일명', '생성일시'];
+    // Adobe InDesign 탭 구분 TXT 데이터 병합 헤더 (고정 규격: 관리번호, 이사회명, 직함, 성명, #QR코드)
+    const headers = ['관리번호', '이사회명', '직함', '성명', '#QR코드'];
     const rows = records.map((rec) => [
       rec.managementNumber,
-      rec.name,
       rec.affiliation,
       rec.title,
+      rec.name,
       rec.fileName,
-      rec.createdAt,
     ]);
 
     const txtContent = [

@@ -77,7 +77,7 @@ export class QRVerifier {
 
       if (cols.length < 5) continue;
 
-      const [managementNumber, name, affiliation, title, rawFileName] = cols;
+      const [managementNumber, affiliation, title, name, rawFileName] = cols;
       const fileName = path.basename(rawFileName); // 파일명만 추출
       const relativePath = rawFileName.replace(/\//g, path.sep);
       let pngPath = path.join(outputDir, relativePath);
