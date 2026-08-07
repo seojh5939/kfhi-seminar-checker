@@ -241,21 +241,43 @@ export const App: React.FC = () => {
       style={{
         fontFamily: 'system-ui, -apple-system, sans-serif',
         padding: '24px',
-        backgroundColor: '#0f172a',
-        backgroundImage: customBg
-          ? `linear-gradient(rgba(15, 23, 42, 0.65), rgba(15, 23, 42, 0.65)), url(${customBg})`
-          : undefined,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundAttachment: 'fixed',
+        backgroundColor: customBg ? 'transparent' : '#0f172a',
         color: '#f8fafc',
         width: '100%',
         minHeight: '100vh',
         boxSizing: 'border-box',
         margin: 0,
         position: 'relative',
+        zIndex: 1,
       }}
     >
+      {/* 1920x1080 창 픽셀 맞춤 선명한 고정 배경 레이어 (어두운 딤/블러 100% 제거) */}
+      {customBg && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            zIndex: -1,
+            overflow: 'hidden',
+            pointerEvents: 'none',
+          }}
+        >
+          <img
+            src={customBg}
+            alt="Program Background"
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              objectPosition: 'center',
+              display: 'block',
+            }}
+          />
+        </div>
+      )}
       {/* 헤더 */}
       <header
         style={{
