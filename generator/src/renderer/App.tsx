@@ -25,6 +25,7 @@ export function App() {
     count: number;
     manifestPath: string;
     outputDir: string;
+    attendees?: AttendeeInput[];
   } | null>(null);
 
   const [isVerifying, setIsVerifying] = useState(false);
@@ -143,22 +144,22 @@ export function App() {
       });
 
       if (res.success) {
-        setSingleResult({
-          success: true,
+        setCompletedResult({
           count: attendeesToGenerate.length,
           outputDir: singleOutputDir,
           manifestPath: res.manifestPath,
+          attendees: attendeesToGenerate,
         });
       } else {
         alert(`수동 입력 생성 실패: ${res.error}`);
       }
     } else {
       // Mock fallback for web
-      setSingleResult({
-        success: true,
+      setCompletedResult({
         count: attendeesToGenerate.length,
         outputDir: singleOutputDir,
         manifestPath: `${singleOutputDir}\\manifest.txt`,
+        attendees: attendeesToGenerate,
       });
     }
 
@@ -301,7 +302,7 @@ export function App() {
         total: completedResult.count,
         successCount: completedResult.count,
         failCount: 0,
-        items: validationResult?.attendees.map((a) => ({
+        items: (completedResult?.attendees || validationResult?.attendees || []).map((a) => ({
           managementNumber: a.managementNumber,
           name: a.name,
           affiliation: a.affiliation,
@@ -329,6 +330,8 @@ export function App() {
     setProgress(null);
     setCompletedResult(null);
     setVerificationSummary(null);
+    setManualRows([{ id: '1', managementNumber: '', name: '', affiliation: '', title: '' }]);
+    setSingleOutputDir(null);
   };
 
   const handleOpenFolder = (path: string) => {
@@ -741,37 +744,15 @@ export function App() {
   )}
 
       {/* 탭 2: 긴급 수동 입력 (1명 ~ N명 동적 입력 지원) */}
-      {activeTab === 'single' && (
+      {activeTab === 'single' && !completedResult && (
         <section className="glass-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '12px' }}>
-            <div>
-              <h2 style={{ fontSize: '18px', margin: 0, fontWeight: 700, color: '#38bdf8' }}>
-                ✍️ 긴급 참석자 수동 입력 암호화 QR 생성
-              </h2>
-              <p className="subtitle" style={{ margin: '4px 0 0 0' }}>
-                엑셀 파일 없이 현장에서 수동으로 직접 참석자 정보(관리번호, 성명, 소속, 직함)를 입력하여 즉시 암호화 QR 이미지(PNG)를 만듭니다.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleAddManualRow}
-              style={{
-                backgroundColor: '#0284c7',
-                color: 'white',
-                border: 'none',
-                padding: '10px 18px',
-                borderRadius: '8px',
-                fontWeight: 'bold',
-                fontSize: '14px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-              }}
-            >
-              ➕ 참석자 행 추가 ({manualRows.length}명 입력 중)
-            </button>
+          <div style={{ marginBottom: '16px' }}>
+            <h2 style={{ fontSize: '18px', margin: 0, fontWeight: 700, color: '#38bdf8' }}>
+              ✍️ 긴급 참석자 수동 입력 암호화 QR 생성
+            </h2>
+            <p className="subtitle" style={{ margin: '4px 0 0 0' }}>
+              엑셀 파일 없이 현장에서 수동으로 직접 참석자 정보(관리번호, 성명, 소속, 직함)를 입력하여 즉시 암호화 QR 이미지(PNG)를 만듭니다.
+            </p>
           </div>
 
           <form onSubmit={handleSingleGenerate} style={{ marginTop: '20px' }}>
@@ -963,20 +944,6 @@ export function App() {
               </button>
             </div>
           </form>
-
-          {/* 수동 다건 생성 결과 */}
-          {singleResult && (
-            <div style={{ marginTop: '24px', padding: '20px', backgroundColor: 'rgba(16, 185, 129, 0.12)', borderRadius: '12px', border: '1px solid rgba(16, 185, 129, 0.4)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#34d399', fontWeight: 'bold', fontSize: '16px', marginBottom: '8px' }}>
-                <span>🎉 수동 입력 QR코드 {singleResult.count}건 생성 완료!</span>
-              </div>
-              <div style={{ fontSize: '14px', color: '#f8fafc', lineHeight: 1.6 }}>
-                생성 건수: <strong>총 {singleResult.count} 건</strong><br />
-                저장 위치: <span style={{ fontSize: '13px', color: '#cbd5e1' }}>{singleResult.outputDir}</span><br />
-                매니페스트: <span style={{ fontSize: '13px', color: '#cbd5e1' }}>{singleResult.manifestPath}</span>
-              </div>
-            </div>
-          )}
         </section>
       )}
       </main>
