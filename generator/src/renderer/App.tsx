@@ -50,20 +50,40 @@ export function App() {
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [showBgModal, setShowBgModal] = useState<boolean>(false);
 
-  // 개별 1줄 입력 탭 State
+  // 동적 수동 입력 탭 State (N명 입력 지원)
   const [activeTab, setActiveTab] = useState<'batch' | 'single'>('batch');
-  const [singleMgmtNo, setSingleMgmtNo] = useState<string>('');
-  const [singleName, setSingleName] = useState<string>('');
-  const [singleAffiliation, setSingleAffiliation] = useState<string>('');
-  const [singleTitle, setSingleTitle] = useState<string>('');
+  const [manualRows, setManualRows] = useState<
+    Array<{ id: string; managementNumber: string; name: string; affiliation: string; title: string }>
+  >([{ id: '1', managementNumber: '', name: '', affiliation: '', title: '' }]);
   const [singleOutputDir, setSingleOutputDir] = useState<string | null>(null);
   const [singleGenerating, setSingleGenerating] = useState<boolean>(false);
   const [singleResult, setSingleResult] = useState<{
     success: boolean;
-    fileName: string;
-    filePath: string;
+    count: number;
+    outputDir: string;
     manifestPath: string;
   } | null>(null);
+
+  const handleAddManualRow = () => {
+    setManualRows((prev) => [
+      ...prev,
+      { id: String(Date.now() + Math.random()), managementNumber: '', name: '', affiliation: '', title: '' },
+    ]);
+  };
+
+  const handleRemoveManualRow = (id: string) => {
+    if (manualRows.length <= 1) {
+      alert('최소 1명의 참석자 정보는 입력되어야 합니다.');
+      return;
+    }
+    setManualRows((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const handleManualRowChange = (id: string, field: 'managementNumber' | 'name' | 'affiliation' | 'title', value: string) => {
+    setManualRows((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, [field]: value } : row))
+    );
+  };
 
   const handleSingleSelectOutputDir = async () => {
     if (window.electron) {
@@ -76,49 +96,68 @@ export function App() {
 
   const handleSingleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!/^\d{5}$/.test(singleMgmtNo)) {
-      alert('관리번호는 5자리 숫자(예: 90001)로 입력해야 합니다.');
-      return;
-    }
-    if (!singleName.trim() || !singleAffiliation.trim() || !singleTitle.trim()) {
-      alert('성명, 소속(이사회명), 직함을 모두 입력해 주세요.');
-      return;
-    }
     if (!singleOutputDir) {
       alert('QR 이미지를 저장할 폴더를 지정해 주세요.');
       return;
     }
 
+    // 모든 행 입력 및 규칙 검증
+    const attendeesToGenerate: AttendeeInput[] = [];
+    const mgmtNoSet = new Set<string>();
+
+    for (let i = 0; i < manualRows.length; i++) {
+      const row = manualRows[i];
+      const mgmtNo = row.managementNumber.trim();
+      const name = row.name.trim();
+      const affiliation = row.affiliation.trim();
+      const title = row.title.trim();
+
+      if (!mgmtNo || !name || !affiliation || !title) {
+        alert(`${i + 1}번째 행의 모든 필드(관리번호, 성명, 소속, 직함)를 작성해 주세요.`);
+        return;
+      }
+      if (!/^\d{5}$/.test(mgmtNo)) {
+        alert(`${i + 1}번째 행의 관리번호[${mgmtNo}]는 5자리 숫자(예: 00001 ~ 99999)이어야 합니다.`);
+        return;
+      }
+      if (mgmtNoSet.has(mgmtNo)) {
+        alert(`중복된 관리번호가 발견되었습니다: [${mgmtNo}]. 각 입력건의 관리번호는 유일해야 합니다.`);
+        return;
+      }
+      mgmtNoSet.add(mgmtNo);
+
+      attendeesToGenerate.push({
+        managementNumber: mgmtNo,
+        name,
+        affiliation,
+        title,
+      });
+    }
+
     setSingleGenerating(true);
-    const singleAttendee: AttendeeInput = {
-      managementNumber: singleMgmtNo.trim(),
-      name: singleName.trim(),
-      affiliation: singleAffiliation.trim(),
-      title: singleTitle.trim(),
-    };
 
     if (window.electron) {
       const res = await window.electron.generateQRCodes({
-        attendees: [singleAttendee],
+        attendees: attendeesToGenerate,
         outputDir: singleOutputDir,
       });
 
       if (res.success) {
         setSingleResult({
           success: true,
-          fileName: `${singleMgmtNo.trim()}.png`,
-          filePath: `${singleOutputDir}\\${singleMgmtNo.trim()}.png`,
+          count: attendeesToGenerate.length,
+          outputDir: singleOutputDir,
           manifestPath: res.manifestPath,
         });
       } else {
-        alert(`개별 생성 실패: ${res.error}`);
+        alert(`수동 입력 생성 실패: ${res.error}`);
       }
     } else {
       // Mock fallback for web
       setSingleResult({
         success: true,
-        fileName: `${singleMgmtNo.trim()}.png`,
-        filePath: `${singleOutputDir}\\${singleMgmtNo.trim()}.png`,
+        count: attendeesToGenerate.length,
+        outputDir: singleOutputDir,
         manifestPath: `${singleOutputDir}\\manifest.txt`,
       });
     }
@@ -701,106 +740,189 @@ export function App() {
     </>
   )}
 
-      {/* 탭 2: 개별 1줄 수동 입력 (긴급 참석자 QR 생성) */}
+      {/* 탭 2: 긴급 수동 입력 (1명 ~ N명 동적 입력 지원) */}
       {activeTab === 'single' && (
         <section className="glass-card">
-          <h2 style={{ fontSize: '18px', marginBottom: '8px', fontWeight: 700, color: '#38bdf8' }}>
-            ✍️ 개별 긴급 참석자 암호화 QR 생성
-          </h2>
-          <p className="subtitle" style={{ marginBottom: '24px' }}>
-            엑셀 명단에 없는 1명의 참석자 정보(관리번호, 성명, 소속, 직함)를 직접 입력하여 즉시 암호화 QR 이미지(PNG)를 만듭니다.
-          </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '12px' }}>
+            <div>
+              <h2 style={{ fontSize: '18px', margin: 0, fontWeight: 700, color: '#38bdf8' }}>
+                ✍️ 긴급 참석자 수동 입력 암호화 QR 생성
+              </h2>
+              <p className="subtitle" style={{ margin: '4px 0 0 0' }}>
+                엑셀 파일 없이 현장에서 수동으로 직접 참석자 정보(관리번호, 성명, 소속, 직함)를 입력하여 즉시 암호화 QR 이미지(PNG)를 만듭니다.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleAddManualRow}
+              style={{
+                backgroundColor: '#0284c7',
+                color: 'white',
+                border: 'none',
+                padding: '10px 18px',
+                borderRadius: '8px',
+                fontWeight: 'bold',
+                fontSize: '14px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+              }}
+            >
+              ➕ 참석자 행 추가 ({manualRows.length}명 입력 중)
+            </button>
+          </div>
 
-          <form onSubmit={handleSingleGenerate}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#cbd5e1' }}>
-                  1. 관리번호 (5자리 숫자) *
-                </label>
-                <input
-                  type="text"
-                  placeholder="예: 90001"
-                  maxLength={5}
-                  value={singleMgmtNo}
-                  onChange={(e) => setSingleMgmtNo(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    borderRadius: '8px',
-                    border: '1px solid #475569',
-                    backgroundColor: '#0f172a',
-                    color: 'white',
-                    fontSize: '14px',
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </div>
+          <form onSubmit={handleSingleGenerate} style={{ marginTop: '20px' }}>
+            {manualRows.map((row, idx) => (
+              <div
+                key={row.id}
+                style={{
+                  backgroundColor: '#0f172a',
+                  padding: '20px',
+                  borderRadius: '12px',
+                  border: '1px solid #334155',
+                  marginBottom: '16px',
+                  position: 'relative',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#38bdf8' }}>
+                    👤 참석자 #{idx + 1}
+                  </span>
+                  {manualRows.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveManualRow(row.id)}
+                      style={{
+                        backgroundColor: '#991b1b',
+                        color: 'white',
+                        border: 'none',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      🗑️ 행 삭제
+                    </button>
+                  )}
+                </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#cbd5e1' }}>
-                  2. 참석자 성명 *
-                </label>
-                <input
-                  type="text"
-                  placeholder="예: 홍길동"
-                  value={singleName}
-                  onChange={(e) => setSingleName(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    borderRadius: '8px',
-                    border: '1px solid #475569',
-                    backgroundColor: '#0f172a',
-                    color: 'white',
-                    fontSize: '14px',
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#cbd5e1' }}>
+                      관리번호 (5자리 숫자) *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="예: 90001"
+                      maxLength={5}
+                      value={row.managementNumber}
+                      onChange={(e) => handleManualRowChange(row.id, 'managementNumber', e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid #475569',
+                        backgroundColor: '#1e293b',
+                        color: 'white',
+                        fontSize: '14px',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#cbd5e1' }}>
-                  3. 소속 / 이사회명 *
-                </label>
-                <input
-                  type="text"
-                  placeholder="예: 서울후원이사회 / 본부"
-                  value={singleAffiliation}
-                  onChange={(e) => setSingleAffiliation(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    borderRadius: '8px',
-                    border: '1px solid #475569',
-                    backgroundColor: '#0f172a',
-                    color: 'white',
-                    fontSize: '14px',
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#cbd5e1' }}>
+                      성명 *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="예: 홍길동"
+                      value={row.name}
+                      onChange={(e) => handleManualRowChange(row.id, 'name', e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid #475569',
+                        backgroundColor: '#1e293b',
+                        color: 'white',
+                        fontSize: '14px',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#cbd5e1' }}>
-                  4. 직함 *
-                </label>
-                <input
-                  type="text"
-                  placeholder="예: 이사 / 목사 / 스탭"
-                  value={singleTitle}
-                  onChange={(e) => setSingleTitle(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    borderRadius: '8px',
-                    border: '1px solid #475569',
-                    backgroundColor: '#0f172a',
-                    color: 'white',
-                    fontSize: '14px',
-                    boxSizing: 'border-box',
-                  }}
-                />
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#cbd5e1' }}>
+                      소속 / 이사회명 *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="예: 서울후원이사회 / 본부"
+                      value={row.affiliation}
+                      onChange={(e) => handleManualRowChange(row.id, 'affiliation', e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid #475569',
+                        backgroundColor: '#1e293b',
+                        color: 'white',
+                        fontSize: '14px',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#cbd5e1' }}>
+                      직함 *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="예: 이사 / 목사 / 스탭"
+                      value={row.title}
+                      onChange={(e) => handleManualRowChange(row.id, 'title', e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid #475569',
+                        backgroundColor: '#1e293b',
+                        color: 'white',
+                        fontSize: '14px',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
+            ))}
+
+            {/* 행 추가 버튼 하단 재배치 */}
+            <div style={{ marginBottom: '24px' }}>
+              <button
+                type="button"
+                onClick={handleAddManualRow}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: '10px',
+                  border: '2px dashed #0284c7',
+                  backgroundColor: 'rgba(2, 132, 199, 0.1)',
+                  color: '#38bdf8',
+                  fontWeight: 'bold',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                }}
+              >
+                ➕ 참석자 1명 더 추가하기 (+ 버튼)
+              </button>
             </div>
 
             {/* 저장 폴더 지정 */}
@@ -837,20 +959,20 @@ export function App() {
                 style={{ padding: '12px 28px', fontSize: '15px' }}
                 disabled={singleGenerating}
               >
-                {singleGenerating ? '⚡ 단건 암호화 QR 생성 중...' : '⚡ 단건 암호화 QR 코드 생성하기'}
+                {singleGenerating ? '⚡ 암호화 QR 생성 중...' : `⚡ 수동 입력된 ${manualRows.length}명 암호화 QR 코드 생성하기`}
               </button>
             </div>
           </form>
 
-          {/* 단건 생성 결과 */}
+          {/* 수동 다건 생성 결과 */}
           {singleResult && (
             <div style={{ marginTop: '24px', padding: '20px', backgroundColor: 'rgba(16, 185, 129, 0.12)', borderRadius: '12px', border: '1px solid rgba(16, 185, 129, 0.4)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#34d399', fontWeight: 'bold', fontSize: '16px', marginBottom: '8px' }}>
-                <span>🎉 개별 QR 생성 완료!</span>
+                <span>🎉 수동 입력 QR코드 {singleResult.count}건 생성 완료!</span>
               </div>
               <div style={{ fontSize: '14px', color: '#f8fafc', lineHeight: 1.6 }}>
-                생성 파일: <strong>{singleResult.fileName}</strong><br />
-                저장 위치: <span style={{ fontSize: '13px', color: '#cbd5e1' }}>{singleResult.filePath}</span><br />
+                생성 건수: <strong>총 {singleResult.count} 건</strong><br />
+                저장 위치: <span style={{ fontSize: '13px', color: '#cbd5e1' }}>{singleResult.outputDir}</span><br />
                 매니페스트: <span style={{ fontSize: '13px', color: '#cbd5e1' }}>{singleResult.manifestPath}</span>
               </div>
             </div>
