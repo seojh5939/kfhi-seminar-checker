@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import * as fs from 'fs';
 import { AttendeeInput } from 'shared';
 
 export class ExcelParser {
@@ -6,8 +7,13 @@ export class ExcelParser {
    * 엑셀 파일(.xlsx) 경로 또는 버퍼를 수신하여 참석자 raw 객체 배열로 변환
    */
   public static async parseExcelFile(filePath: string): Promise<Partial<AttendeeInput>[]> {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(filePath);
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`엑셀 파일을 찾을 수 없습니다: ${filePath}`);
+    }
+    const fileBuffer = fs.readFileSync(filePath);
+    const ExcelJSLib: any = ExcelJS.Workbook ? ExcelJS : (ExcelJS as any).default || ExcelJS;
+    const workbook = new ExcelJSLib.Workbook();
+    await workbook.xlsx.load(fileBuffer);
 
     const worksheet = workbook.worksheets[0];
     if (!worksheet) {

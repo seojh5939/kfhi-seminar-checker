@@ -45,13 +45,16 @@ export class QRGeneratorEngine {
       // 콤팩트 바이너리(Base64URL) 암호화 문자열 생성 (암호문 길이 65% 축소)
       const cipherText = this.cryptoEngine.encryptAttendeeCompact(attendee);
 
-      // QR 코드 PNG 파일 저장 (300x300, 큼직한 모듈 셀)
-      await QRCode.toFile(filePath, cipherText, {
+      // QR 코드 Buffer 생성 및 파일 저장 (300x300, 큼직한 모듈 셀)
+      const qrcodeModule: any = typeof (QRCode as any).toBuffer === 'function' ? QRCode : (QRCode as any).default || QRCode;
+      const qrBuffer = await qrcodeModule.toBuffer(cipherText, {
         width: 300,
         margin: 1,
         errorCorrectionLevel: 'M',
         color: { dark: '#000000', light: '#FFFFFF' },
       });
+
+      fs.writeFileSync(filePath, qrBuffer);
 
       manifestRecords.push({
         managementNumber: attendee.managementNumber,

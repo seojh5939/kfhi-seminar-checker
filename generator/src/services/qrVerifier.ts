@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as pngjsModule from 'pngjs';
 import { PNG } from 'pngjs';
 import jsQR from 'jsqr';
 import { CryptoEngine, QRPayload } from 'shared';
@@ -102,8 +103,10 @@ export class QRVerifier {
       try {
         // PNG 읽기 및 jsQR 디코딩
         const imageBuffer = fs.readFileSync(pngPath);
-        const png = PNG.sync.read(imageBuffer);
-        const code = jsQR(new Uint8ClampedArray(png.data), png.width, png.height);
+        const PNGLib: any = PNG || (pngjsModule as any).default?.PNG || (pngjsModule as any).PNG;
+        const jsQRLib: any = typeof jsQR === 'function' ? jsQR : (jsQR as any).default;
+        const png = PNGLib.sync.read(imageBuffer);
+        const code = jsQRLib(new Uint8ClampedArray(png.data), png.width, png.height);
 
         if (!code || !code.data) {
           failCount++;
