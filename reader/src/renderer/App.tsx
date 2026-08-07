@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Scanner } from './components/Scanner';
 import { ScanRecord } from 'shared';
 import appPackageJson from '../../package.json';
+import kfhiLogo from '../assets/kfhi-logo.png';
 
 declare global {
   interface Window {
@@ -278,31 +279,32 @@ export const App: React.FC = () => {
           />
         </div>
       )}
-      {/* 헤더 */}
+      {/* 헤더 (상단 Dark Glass Bar 패널 적용으로 가독성 100% 보장) */}
       <header
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           marginBottom: '24px',
-          paddingBottom: '16px',
-          borderBottom: '1px solid #334155',
+          padding: '16px 24px',
+          backgroundColor: 'rgba(15, 23, 42, 0.88)',
+          backdropFilter: 'blur(12px)',
+          borderRadius: '16px',
+          border: '1px solid rgba(255, 255, 255, 0.12)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <img
-            src="./kfhi-logo.png"
+            src={kfhiLogo}
             alt="희망친구 기아대책"
-            onError={(e) => {
-              (e.target as HTMLElement).style.display = 'none';
-            }}
-            style={{ height: '40px', objectFit: 'contain' }}
+            style={{ height: '42px', objectFit: 'contain', display: 'block' }}
           />
           <div>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: '#38bdf8' }}>
+            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: '#38bdf8', textShadow: '0 2px 4px rgba(0, 0, 0, 0.8)' }}>
               기아대책 출입관리 QR 인식기
             </h1>
-            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>
+            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#cbd5e1', textShadow: '0 1px 3px rgba(0, 0, 0, 0.8)' }}>
               {isLocationSet ? `현재 장소: [ ${locationName} ]` : '스캔 시작 전 장소를 먼저 등록해주세요'}
             </p>
           </div>
@@ -322,6 +324,7 @@ export const App: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
               }}
             >
               ⚙️ 설정
@@ -370,9 +373,22 @@ export const App: React.FC = () => {
         </div>
       ) : (
         <div style={{ maxWidth: '640px', margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          {/* QR 스캔 영역 (가운데 정렬) */}
-          <div style={{ width: '100%', backgroundColor: '#1e293b', padding: '24px', borderRadius: '16px', boxSizing: 'border-box', marginBottom: '20px', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#38bdf8', textAlign: 'center', fontWeight: 'bold' }}>
+          {/* QR 스캔 영역 (가운데 정렬 + Glassmorphism 패널 가독성 적용) */}
+          <div
+            style={{
+              width: '100%',
+              backgroundColor: 'rgba(30, 41, 59, 0.88)',
+              backdropFilter: 'blur(12px)',
+              padding: '24px',
+              borderRadius: '16px',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+              boxSizing: 'border-box',
+              marginBottom: '20px',
+              textAlign: 'center',
+            }}
+          >
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#38bdf8', textAlign: 'center', fontWeight: 'bold', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
               명찰의 QR코드를 카메라에 보여주세요
             </h3>
             <Scanner
@@ -384,7 +400,17 @@ export const App: React.FC = () => {
           </div>
 
           {/* 최근 스캔기록 하단 배치 + Toggle 버튼 */}
-          <div style={{ width: '100%', backgroundColor: '#1e293b', borderRadius: '12px', overflow: 'hidden' }}>
+          <div
+            style={{
+              width: '100%',
+              backgroundColor: 'rgba(30, 41, 59, 0.88)',
+              backdropFilter: 'blur(12px)',
+              borderRadius: '12px',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+              overflow: 'hidden',
+            }}
+          >
             <button
               onClick={() => setShowHistoryToggle((prev) => !prev)}
               style={{

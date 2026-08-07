@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AttendeeInput, ValidationErrorItem } from 'shared';
+import kfhiLogo from '../assets/kfhi-logo.png';
 
 export function App() {
   const [filePath, setFilePath] = useState<string | null>(null);
@@ -253,23 +254,36 @@ export function App() {
           />
         </div>
       )}
-      <header>
-        <div className="logo-group">
+      <header
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '24px',
+          padding: '16px 24px',
+          backgroundColor: 'rgba(15, 23, 42, 0.88)',
+          backdropFilter: 'blur(12px)',
+          borderRadius: '16px',
+          border: '1px solid rgba(255, 255, 255, 0.12)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+        }}
+      >
+        <div className="logo-group" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <img
-            src="./kfhi-logo.png"
+            src={kfhiLogo}
             alt="희망친구 기아대책"
-            onError={(e) => {
-              // 이미지 로드 실패 시 텍스트 배지 fallback
-              (e.target as HTMLElement).style.display = 'none';
-            }}
             style={{ height: '42px', objectFit: 'contain', display: 'block' }}
           />
           <div>
-            <h1>행사 출입관리 QR코드 생성기</h1>
-            <p className="subtitle">기아대책 오프라인 행사 전용 암호화 QR 대량 인코더</p>
+            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: '#38bdf8', textShadow: '0 2px 4px rgba(0, 0, 0, 0.8)' }}>
+              행사 출입관리 QR코드 생성기
+            </h1>
+            <p className="subtitle" style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#cbd5e1', textShadow: '0 1px 3px rgba(0, 0, 0, 0.8)' }}>
+              기아대책 오프라인 행사 전용 암호화 QR 대량 인코더
+            </p>
           </div>
         </div>
-        <button className="btn btn-secondary" onClick={() => setShowBgModal(true)}>
+        <button className="btn btn-secondary" onClick={() => setShowBgModal(true)} style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
           🖼️ 배경화면 설정
         </button>
       </header>
