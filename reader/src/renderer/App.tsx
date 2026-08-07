@@ -272,7 +272,7 @@ export const App: React.FC = () => {
             style={{
               width: '100%',
               height: '100%',
-              objectFit: 'cover',
+              objectFit: 'fill',
               objectPosition: 'center',
               display: 'block',
             }}
@@ -301,10 +301,10 @@ export const App: React.FC = () => {
             style={{ height: '42px', objectFit: 'contain', display: 'block' }}
           />
           <div>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: '#38bdf8', textShadow: '0 2px 4px rgba(0, 0, 0, 0.8)' }}>
+            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: '#38bdf8' }}>
               기아대책 출입관리 QR 인식기
             </h1>
-            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#cbd5e1', textShadow: '0 1px 3px rgba(0, 0, 0, 0.8)' }}>
+            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#cbd5e1' }}>
               {isLocationSet ? `현재 장소: [ ${locationName} ]` : '스캔 시작 전 장소를 먼저 등록해주세요'}
             </p>
           </div>
@@ -388,7 +388,7 @@ export const App: React.FC = () => {
               textAlign: 'center',
             }}
           >
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#38bdf8', textAlign: 'center', fontWeight: 'bold', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#38bdf8', textAlign: 'center', fontWeight: 'bold' }}>
               명찰의 QR코드를 카메라에 보여주세요
             </h3>
             <Scanner

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AttendeeInput, ValidationErrorItem } from 'shared';
 import kfhiLogo from '../assets/kfhi-logo.png';
+import appPackageJson from '../../package.json';
 
 export function App() {
   const [filePath, setFilePath] = useState<string | null>(null);
@@ -46,6 +47,7 @@ export function App() {
   const [customBg, setCustomBg] = useState<string>(() => {
     return localStorage.getItem('kfhi_generator_bg') || '';
   });
+  const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [showBgModal, setShowBgModal] = useState<boolean>(false);
 
   const handleBgImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -227,7 +229,7 @@ export function App() {
 
   return (
     <div className="app-container" style={{ position: 'relative', zIndex: 1, minHeight: '100vh', backgroundColor: customBg ? 'transparent' : undefined }}>
-      {/* 1920x1080 창 픽셀 맞춤 선명한 고정 배경 레이어 (어두운 딤/블러 100% 제거) */}
+      {/* 1920x1080 창 픽셀 100% 맞춤 고정 배경 레이어 (우측 잘림 방지: objectFit '100% 100%') */}
       {customBg && (
         <div
           style={{
@@ -247,7 +249,7 @@ export function App() {
             style={{
               width: '100%',
               height: '100%',
-              objectFit: 'cover',
+              objectFit: 'fill',
               objectPosition: 'center',
               display: 'block',
             }}
@@ -275,16 +277,20 @@ export function App() {
             style={{ height: '42px', objectFit: 'contain', display: 'block' }}
           />
           <div>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: '#38bdf8', textShadow: '0 2px 4px rgba(0, 0, 0, 0.8)' }}>
+            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: '#38bdf8' }}>
               행사 출입관리 QR코드 생성기
             </h1>
-            <p className="subtitle" style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#cbd5e1', textShadow: '0 1px 3px rgba(0, 0, 0, 0.8)' }}>
+            <p className="subtitle" style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#cbd5e1' }}>
               기아대책 오프라인 행사 전용 암호화 QR 대량 인코더
             </p>
           </div>
         </div>
-        <button className="btn btn-secondary" onClick={() => setShowBgModal(true)} style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
-          🖼️ 배경화면 설정
+        <button
+          className="btn btn-secondary"
+          onClick={() => setShowSettingsModal(true)}
+          style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          ⚙️ 설정
         </button>
       </header>
 
@@ -556,8 +562,8 @@ export function App() {
         </section>
       )}
 
-      {/* 배경화면 변경 및 픽셀 가이드 모달 */}
-      {showBgModal && (
+      {/* 설정 팝업 모달 */}
+      {showSettingsModal && (
         <div
           style={{
             position: 'fixed',
@@ -580,10 +586,105 @@ export function App() {
               padding: '32px',
               borderRadius: '20px',
               width: '100%',
-              maxWidth: '560px',
+              maxWidth: '480px',
               border: '1px solid #475569',
               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
+              position: 'relative',
+            }}
+          >
+            {/* 좌상단 뒤로가기 버튼 */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', paddingBottom: '12px', borderBottom: '1px solid #334155' }}>
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                style={{
+                  backgroundColor: '#334155',
+                  color: '#f8fafc',
+                  border: 'none',
+                  padding: '8px 14px',
+                  borderRadius: '6px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                }}
+              >
+                ⬅️ 뒤로가기
+              </button>
+              <h2 style={{ margin: 0, fontSize: '18px', color: '#38bdf8', fontWeight: 'bold' }}>⚙️ 생성기 설정</h2>
+              <div style={{ width: '80px' }} />
+            </div>
+
+            {/* 설정 메뉴 버튼 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <button
+                onClick={() => setShowBgModal(true)}
+                style={{
+                  padding: '16px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  fontWeight: 'bold',
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <span>🖼️ 배경화면 변경 & 픽셀 가이드</span>
+                <span style={{ fontSize: '13px', opacity: 0.9 }}>1920×1080 PNG</span>
+              </button>
+            </div>
+
+            {/* 설정 모달 최하단 버전 명시 (package.json 연동) */}
+            <div
+              style={{
+                marginTop: '32px',
+                paddingTop: '16px',
+                borderTop: '1px solid #334155',
+                textAlign: 'center',
+                fontSize: '13px',
+                color: '#64748b',
+                fontWeight: '500',
+              }}
+            >
+              기아대책 명찰 QR 생성기 v{appPackageJson.version}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 배경화면 변경 및 1920x1080 픽셀 가이드 모달 */}
+      {showBgModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10010,
+            padding: '24px',
+            backdropFilter: 'blur(6px)',
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#1e293b',
+              padding: '32px',
+              borderRadius: '20px',
+              width: '100%',
+              maxWidth: '680px',
+              border: '1px solid #475569',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)',
               color: '#f8fafc',
+              maxHeight: '90vh',
+              overflowY: 'auto',
             }}
           >
             <div
@@ -596,21 +697,30 @@ export function App() {
                 borderBottom: '1px solid #334155',
               }}
             >
-              <h2 style={{ margin: 0, fontSize: '18px', color: '#38bdf8', fontWeight: 'bold' }}>
-                🖼️ 사용자 정의 배경화면 설정
+              <h2 style={{ margin: 0, fontSize: '20px', color: '#38bdf8', fontWeight: 'bold' }}>
+                🖼️ 배경화면 변경 및 디자인 픽셀 가이드
               </h2>
               <button
-                className="btn btn-secondary"
                 onClick={() => setShowBgModal(false)}
-                style={{ padding: '6px 12px', fontSize: '13px' }}
+                style={{
+                  backgroundColor: '#334155',
+                  color: '#f8fafc',
+                  border: 'none',
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                }}
               >
                 ✖ 닫기
               </button>
             </div>
 
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>
-                배경화면 이미지 선택 (PNG / JPG 권장, 1920×1080 기준)
+            {/* 배경 이미지 선택 섹션 */}
+            <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '12px', marginBottom: '24px', border: '1px solid #334155' }}>
+              <label style={{ display: 'block', fontSize: '15px', fontWeight: 700, marginBottom: '8px', color: '#38bdf8' }}>
+                1. 배경화면 이미지 업로드 (PNG / JPG, 1920×1080 권장)
               </label>
               <input
                 type="file"
@@ -621,42 +731,92 @@ export function App() {
                   padding: '10px',
                   borderRadius: '8px',
                   border: '1px solid #475569',
-                  backgroundColor: '#0f172a',
+                  backgroundColor: '#1e293b',
                   color: 'white',
                   fontSize: '13px',
+                  boxSizing: 'border-box',
                 }}
               />
+
+              {customBg && (
+                <div style={{ marginTop: '16px' }}>
+                  <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '8px' }}>현재 적용된 배경화면 미리보기:</div>
+                  <img
+                    src={customBg}
+                    alt="Custom Generator Background Preview"
+                    style={{
+                      width: '100%',
+                      height: '150px',
+                      objectFit: 'cover',
+                      borderRadius: '8px',
+                      border: '1px solid #475569',
+                    }}
+                  />
+                  <button
+                    onClick={handleResetBg}
+                    style={{
+                      marginTop: '12px',
+                      padding: '8px 16px',
+                      backgroundColor: '#991b1b',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontWeight: 'bold',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    🗑️ 배경 초기화 (기본 다크 네이비)
+                  </button>
+                </div>
+              )}
             </div>
 
-            {customBg && (
-              <div style={{ marginBottom: '20px' }}>
-                <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '8px' }}>현재 설정된 배경 미리보기:</div>
-                <img
-                  src={customBg}
-                  alt="Custom Background Preview"
-                  style={{
-                    width: '100%',
-                    height: '140px',
-                    objectFit: 'cover',
-                    borderRadius: '8px',
-                    border: '1px solid #334155',
-                  }}
-                />
-              </div>
-            )}
+            {/* 1920x1080 배경 디자인 가이드 섹션 */}
+            <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '12px', border: '1px solid #334155' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', color: '#38bdf8', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                📐 1920×1080 생성기 전용 배경 디자인 픽셀 가이드
+              </h3>
+              <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#94a3b8', lineHeight: 1.5 }}>
+                생성기 화면 중앙에는 엑셀 업로드 카드 및 매니페스트 검증 리포트가 위치합니다. 메인 비주얼, 키 비주얼 등은 <strong>상단/좌우 사이드 영역</strong>에 배치해 주세요.
+              </p>
 
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
-              {customBg && (
-                <button
-                  className="btn"
-                  onClick={handleResetBg}
-                  style={{ backgroundColor: '#991b1b', color: 'white' }}
-                >
-                  🗑️ 배경 초기화 (다크 네이비)
-                </button>
-              )}
-              <button className="btn btn-primary" onClick={() => setShowBgModal(false)}>
-                확인
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px', marginBottom: '16px' }}>
+                <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
+                  <div style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '13px' }}>🎯 1. 캔버스 기준 규격</div>
+                  <div style={{ color: '#f8fafc', fontWeight: 'bold', marginTop: '2px' }}>1920 × 1080 px (16:9)</div>
+                  <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>풀HD 표준 모니터 지원</div>
+                </div>
+
+                <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
+                  <div style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '13px' }}>🏷️ 2. 상단 헤더 바 영역</div>
+                  <div style={{ color: '#f8fafc', fontWeight: 'bold', marginTop: '2px' }}>Y: 0 ~ 90 px</div>
+                  <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>로고, 앱 제목, 설정 버튼</div>
+                </div>
+
+                <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
+                  <div style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '13px' }}>📁 3. 중앙 엑셀 업로드 구역</div>
+                  <div style={{ color: '#f8fafc', fontWeight: 'bold', marginTop: '2px' }}>1200 × 600 px (중앙)</div>
+                  <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>X: 360~1560px / Y: 120~720px</div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '24px', textAlign: 'right' }}>
+              <button
+                onClick={() => setShowBgModal(false)}
+                style={{
+                  padding: '10px 24px',
+                  backgroundColor: '#0284c7',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontWeight: 'bold',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                }}
+              >
+                확인 및 닫기
               </button>
             </div>
           </div>
