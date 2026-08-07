@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import QRCode from 'qrcode';
-import { CryptoEngine, AttendeeInput, ManifestRecord } from 'shared';
+import { CryptoEngine, AttendeeInput, ManifestRecord, formatKSTDateTime } from 'shared';
 
 export interface ProgressCallback {
   (current: number, total: number, currentAttendee: AttendeeInput): void;
@@ -27,7 +27,7 @@ export class QRGeneratorEngine {
     onProgress?: ProgressCallback
   ): Promise<ManifestRecord[]> {
     const manifestRecords: ManifestRecord[] = [];
-    const createdAt = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const createdAt = formatKSTDateTime();
 
     // 출력 루트 디렉터리 보장
     const absoluteOutputDir = path.resolve(outputDir);

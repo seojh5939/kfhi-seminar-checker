@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import QrScanner from 'qr-scanner';
-import { ScanRecord } from 'shared';
+import { ScanRecord, formatKSTDateTime } from 'shared';
 
 interface ScannerProps {
   locationName: string;
@@ -291,7 +291,7 @@ export const Scanner: React.FC<ScannerProps> = ({
         affiliation: payload.a,
         title: payload.t,
         location: locationName,
-        scannedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        scannedAt: formatKSTDateTime(),
         isDuplicate: alreadyRegistered,
       };
 
