@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Scanner } from './components/Scanner';
 import { ScanRecord } from 'shared';
 import appPackageJson from '../../package.json';
+import kfhiLogo from '../assets/kfhi-logo.png';
 
 declare global {
   interface Window {
@@ -40,6 +41,32 @@ export const App: React.FC = () => {
 
   // 유니크 참석 인원 카운트 (중복 스캔 제외)
   const uniqueAttendeeCount = scanHistory.filter((r) => !r.isDuplicate).length;
+
+  const [customBg, setCustomBg] = useState<string>(() => {
+    return localStorage.getItem('kfhi_reader_bg') || '';
+  });
+  const [showBgModal, setShowBgModal] = useState<boolean>(false);
+
+  const handleBgImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (base64) {
+        setCustomBg(base64);
+        localStorage.setItem('kfhi_reader_bg', base64);
+        alert('인식기 배경화면이 성공적으로 변경되었습니다!');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleResetBg = () => {
+    setCustomBg('');
+    localStorage.removeItem('kfhi_reader_bg');
+    alert('기본 배경(다크 네이비)으로 초기화되었습니다.');
+  };
 
   const [currentResult, setCurrentResult] = useState<{
     type: 'SUCCESS' | 'DUPLICATE' | 'ERROR';
@@ -211,39 +238,116 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', padding: '24px', backgroundColor: '#0f172a', color: '#f8fafc', width: '100%', minHeight: '100vh', boxSizing: 'border-box', margin: 0, position: 'relative' }}>
-      {/* 헤더 */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #334155' }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: '#38bdf8' }}>기아대책 출입관리 QR 인식기</h1>
-          <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>
-            {isLocationSet ? `현재 장소: [ ${locationName} ]` : '스캔 시작 전 장소를 먼저 등록해주세요'}
-          </p>
+    <div
+      style={{
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        backgroundColor: customBg ? 'transparent' : '#0f172a',
+        color: '#f8fafc',
+        width: '100%',
+        minHeight: '100vh',
+        boxSizing: 'border-box',
+        margin: 0,
+        position: 'relative',
+        zIndex: 1,
+      }}
+    >
+      {/* 1920x1080 고정 배경 레이어 (상단 Bar 가림 방지를 위해 Y 80px 기준점 적용, 하단까지 100% 핏) */}
+      {customBg && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '80px',
+            left: 0,
+            width: '100vw',
+            height: 'calc(100vh - 80px)',
+            zIndex: -1,
+            overflow: 'hidden',
+            pointerEvents: 'none',
+          }}
+        >
+          <img
+            src={customBg}
+            alt="Program Background"
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'fill',
+              objectPosition: 'center',
+              display: 'block',
+            }}
+          />
         </div>
-        {isLocationSet && (
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={() => setShowSettingsModal(true)}
-              style={{
-                backgroundColor: '#334155',
-                color: '#f8fafc',
-                border: '1px solid #475569',
-                padding: '8px 16px',
-                borderRadius: '6px',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-              }}
-            >
-              ⚙️ 설정
-            </button>
+      )}
+
+      {/* 100% Full Width 상단 Header Bar */}
+      <header
+        style={{
+          width: '100%',
+          marginTop: 0,
+          marginBottom: '24px',
+          padding: '16px 0',
+          backgroundColor: 'rgba(15, 23, 42, 0.88)',
+          backdropFilter: 'blur(12px)',
+          borderRadius: 0,
+          borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+          boxSizing: 'border-box',
+        }}
+      >
+        <div
+          style={{
+            maxWidth: '1280px',
+            width: '100%',
+            margin: '0 auto',
+            padding: '0 24px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            boxSizing: 'border-box',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <img
+              src={kfhiLogo}
+              alt="희망친구 기아대책"
+              style={{ height: '42px', objectFit: 'contain', display: 'block' }}
+            />
+            <div>
+              <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: '#38bdf8' }}>
+                기아대책 출입관리 QR 인식기
+              </h1>
+              <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#cbd5e1' }}>
+                {isLocationSet ? `현재 장소: [ ${locationName} ]` : '스캔 시작 전 장소를 먼저 등록해주세요'}
+              </p>
+            </div>
           </div>
-        )}
+          {isLocationSet && (
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => setShowSettingsModal(true)}
+                style={{
+                  backgroundColor: '#334155',
+                  color: '#f8fafc',
+                  border: '1px solid #475569',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                }}
+              >
+                ⚙️ 설정
+              </button>
+            </div>
+          )}
+        </div>
       </header>
 
-      {/* 장소 미설정 폼 */}
+      {/* 메인 컨텐츠 영역 (좌우 24px 패딩 적용) */}
+      <main style={{ padding: '0 24px 24px 24px' }}>
       {!isLocationSet ? (
         <div style={{ maxWidth: '400px', margin: '60px auto', backgroundColor: '#1e293b', padding: '32px', borderRadius: '12px', textAlign: 'center' }}>
           <h2 style={{ fontSize: '18px', marginBottom: '16px', color: '#f8fafc' }}>스캔 장소 등록</h2>
@@ -283,8 +387,21 @@ export const App: React.FC = () => {
         </div>
       ) : (
         <div style={{ maxWidth: '640px', margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          {/* QR 스캔 영역 (가운데 정렬) */}
-          <div style={{ width: '100%', backgroundColor: '#1e293b', padding: '24px', borderRadius: '16px', boxSizing: 'border-box', marginBottom: '20px', textAlign: 'center' }}>
+          {/* QR 스캔 영역 (가운데 정렬 + Glassmorphism 패널 가독성 적용) */}
+          <div
+            style={{
+              width: '100%',
+              backgroundColor: 'rgba(30, 41, 59, 0.88)',
+              backdropFilter: 'blur(12px)',
+              padding: '24px',
+              borderRadius: '16px',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+              boxSizing: 'border-box',
+              marginBottom: '20px',
+              textAlign: 'center',
+            }}
+          >
             <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#38bdf8', textAlign: 'center', fontWeight: 'bold' }}>
               명찰의 QR코드를 카메라에 보여주세요
             </h3>
@@ -297,7 +414,17 @@ export const App: React.FC = () => {
           </div>
 
           {/* 최근 스캔기록 하단 배치 + Toggle 버튼 */}
-          <div style={{ width: '100%', backgroundColor: '#1e293b', borderRadius: '12px', overflow: 'hidden' }}>
+          <div
+            style={{
+              width: '100%',
+              backgroundColor: 'rgba(30, 41, 59, 0.88)',
+              backdropFilter: 'blur(12px)',
+              borderRadius: '12px',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+              overflow: 'hidden',
+            }}
+          >
             <button
               onClick={() => setShowHistoryToggle((prev) => !prev)}
               style={{
@@ -360,6 +487,7 @@ export const App: React.FC = () => {
           </div>
         </div>
       )}
+      </main>
 
       {/* 설정 팝업 모달 */}
       {showSettingsModal && (
@@ -412,8 +540,29 @@ export const App: React.FC = () => {
               <div style={{ width: '80px' }} />
             </div>
 
-            {/* 설정 메뉴 버튼 3종 */}
+            {/* 설정 메뉴 버튼 4종 */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <button
+                onClick={() => setShowBgModal(true)}
+                style={{
+                  padding: '16px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  fontWeight: 'bold',
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <span>🖼️ 배경화면 변경 & 픽셀 가이드</span>
+                <span style={{ fontSize: '13px', opacity: 0.9 }}>1920×1080 PNG</span>
+              </button>
+
               <button
                 onClick={handleExportCsvClick}
                 style={{
@@ -644,6 +793,186 @@ export const App: React.FC = () => {
                 방문장소: {currentResult.record.location} | 시각: {currentResult.record.scannedAt}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 인식기 전용 배경화면 설정 & 1920x1080 상세 픽셀 가이드 모달 */}
+      {showBgModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10010,
+            padding: '24px',
+            backdropFilter: 'blur(6px)',
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#1e293b',
+              padding: '32px',
+              borderRadius: '20px',
+              width: '100%',
+              maxWidth: '680px',
+              border: '1px solid #475569',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)',
+              color: '#f8fafc',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '20px',
+                paddingBottom: '12px',
+                borderBottom: '1px solid #334155',
+              }}
+            >
+              <h2 style={{ margin: 0, fontSize: '20px', color: '#38bdf8', fontWeight: 'bold' }}>
+                🖼️ 배경화면 변경 및 디자인 픽셀 가이드
+              </h2>
+              <button
+                onClick={() => setShowBgModal(false)}
+                style={{
+                  backgroundColor: '#334155',
+                  color: '#f8fafc',
+                  border: 'none',
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                }}
+              >
+                ✖ 닫기
+              </button>
+            </div>
+
+            {/* 배경 이미지 선택 섹션 */}
+            <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '12px', marginBottom: '24px', border: '1px solid #334155' }}>
+              <label style={{ display: 'block', fontSize: '15px', fontWeight: 700, marginBottom: '8px', color: '#38bdf8' }}>
+                1. 배경화면 이미지 업로드 (PNG / JPG, 1920×1080 권장)
+              </label>
+              <input
+                type="file"
+                accept="image/png, image/jpeg"
+                onChange={handleBgImageUpload}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '8px',
+                  border: '1px solid #475569',
+                  backgroundColor: '#1e293b',
+                  color: 'white',
+                  fontSize: '13px',
+                  boxSizing: 'border-box',
+                }}
+              />
+
+              {customBg && (
+                <div style={{ marginTop: '16px' }}>
+                  <button
+                    onClick={handleResetBg}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#991b1b',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontWeight: 'bold',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    🗑️ 배경 초기화 (기본 다크 네이비)
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 1920x1080 배경 디자인 가이드 섹션 */}
+            <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '12px', border: '1px solid #334155' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', color: '#38bdf8', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                📐 1920×1080 인식기 전용 배경 디자인 픽셀 가이드
+              </h3>
+              <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#94a3b8', lineHeight: 1.5 }}>
+                QR 인식기 화면 중앙에는 웹캠 스캔 뷰어가 위치합니다. 행사명, 후원사 로고, 메인 비주얼 등은 아래 좌표 기준 <strong>좌측/우측 사이드 영역</strong>에배치하여 가려지지 않도록 구성해 주세요.
+              </p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px', marginBottom: '16px' }}>
+                <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
+                  <div style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '13px' }}>🎯 1. 캔버스 기준 규격</div>
+                  <div style={{ color: '#f8fafc', fontWeight: 'bold', marginTop: '2px' }}>1920 × 1080 px (16:9)</div>
+                  <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>풀HD 표준 모니터 지원</div>
+                </div>
+
+                <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
+                  <div style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '13px' }}>🏷️ 2. 상단 헤더 바 영역</div>
+                  <div style={{ color: '#f8fafc', fontWeight: 'bold', marginTop: '2px' }}>Y: 0 ~ 90 px</div>
+                  <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>로고, 장소, 카메라스위치, 설정</div>
+                </div>
+
+                <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
+                  <div style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '13px' }}>📷 3. 중앙 웹캠 스캔 뷰</div>
+                  <div style={{ color: '#f8fafc', fontWeight: 'bold', marginTop: '2px' }}>640 × 480 px (중앙)</div>
+                  <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>X: 640~1280px / Y: 180~660px</div>
+                </div>
+
+                <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
+                  <div style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '13px' }}>🔍 4. 스캔 초점 타겟 (ROI)</div>
+                  <div style={{ color: '#f8fafc', fontWeight: 'bold', marginTop: '2px' }}>250 × 250 px (중앙)</div>
+                  <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>X: 835~1085px / Y: 295~545px</div>
+                </div>
+
+                <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
+                  <div style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '13px' }}>🎉 5. 입장 완료 팝업 모달</div>
+                  <div style={{ color: '#f8fafc', fontWeight: 'bold', marginTop: '2px' }}>650 × 300 px (중앙 팝업)</div>
+                  <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>X: 635~1285px / Y: 390~690px</div>
+                </div>
+
+                <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
+                  <div style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '13px' }}>📊 6. 하단 컨트롤/기록바</div>
+                  <div style={{ color: '#f8fafc', fontWeight: 'bold', marginTop: '2px' }}>Y: 900 ~ 1080 px</div>
+                  <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>카메라 드롭다운, 스캔 기록</div>
+                </div>
+              </div>
+
+              <div style={{ backgroundColor: 'rgba(56, 189, 248, 0.12)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(56, 189, 248, 0.3)', color: '#7dd3fc', fontSize: '12px', lineHeight: 1.5 }}>
+                💡 <strong>디자이너 꿀팁 (안전 지대):</strong><br />
+                - <strong>좌측 사이드 안전 영역</strong>: `X: 50 ~ 550px`, `Y: 120 ~ 850px`<br />
+                - <strong>우측 사이드 안전 영역</strong>: `X: 1370 ~ 1870px`, `Y: 120 ~ 850px`<br />
+                위 영역에 브랜드 디자인, 텍스트 타이틀, 스폰서 로고를 배치하시면 카메라 및 스캔 팝업에 전혀 방해받지 않습니다.
+              </div>
+            </div>
+
+            <div style={{ marginTop: '24px', textAlign: 'right' }}>
+              <button
+                onClick={() => setShowBgModal(false)}
+                style={{
+                  padding: '10px 24px',
+                  backgroundColor: '#0284c7',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontWeight: 'bold',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                }}
+              >
+                확인 및 닫기
+              </button>
+            </div>
           </div>
         </div>
       )}

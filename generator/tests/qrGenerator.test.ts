@@ -30,7 +30,7 @@ describe('QRGeneratorEngine 대량 생성 및 이미지 디코딩 무결성 유�
     const manifest = await generatorEngine.generateBulk([dummyAttendee], testOutputDir);
     expect(manifest).toHaveLength(1);
 
-    const qrFilePath = path.join(testOutputDir, '테스트후원이사회', '99999.png');
+    const qrFilePath = path.join(testOutputDir, '99999.png');
     expect(fs.existsSync(qrFilePath)).toBe(true);
 
     // 1. PNG 이미지 바이너리 읽기 및 RGBA 픽셀 변환
@@ -52,7 +52,7 @@ describe('QRGeneratorEngine 대량 생성 및 이미지 디코딩 무결성 유�
     expect(payload.t).toBe(dummyAttendee.title);
   });
 
-  test('참석자 대량 명단을 정상 생성하고 소속별 폴더로 분류한다', async () => {
+  test('참석자 대량 명단을 정상 생성하고 단일 폴더 내 평탄화 배치한다', async () => {
     const attendees: AttendeeInput[] = [];
     const affiliations = ['고양후원이사회', '파주후원이사회', '김포후원이사회', '은평후원이사회'];
 
@@ -83,33 +83,38 @@ describe('QRGeneratorEngine 대량 생성 및 이미지 디코딩 무결성 유�
     expect(progressCallCount).toBe(20);
     expect(elapsedTimeMs).toBeLessThan(60000);
 
-    // 소속별 하위 폴더 존재 여부 확인
-    affiliations.forEach((aff) => {
-      const affDir = path.join(testOutputDir, aff);
-      expect(fs.existsSync(affDir)).toBe(true);
-    });
+    // 단일 폴더 내 QR PNG 파일 존재 여부 검증
+    for (let i = 1; i <= 20; i++) {
+      const numStr = i.toString().padStart(5, '0');
+      const pngPath = path.join(testOutputDir, `${numStr}.png`);
+      expect(fs.existsSync(pngPath)).toBe(true);
+    }
   });
 
-  test('매니페스트 CSV 파일이 UTF-8 BOM으로 정상 내보내기된다', () => {
+  test('매니페스트 TXT 파일이 InDesign 호환 UTF-16 LE 탭 구분으로 정상 내보내기된다', () => {
     const sampleManifest = [
       {
         managementNumber: '00001',
         name: '홍길동',
         affiliation: '고양후원이사회',
         title: '목사',
-        fileName: '고양후원이사회/00001.png',
+        fileName: '00001.png',
         createdAt: '2026-08-03 21:00:00',
       },
     ];
 
-    const csvPath = path.join(testOutputDir, 'manifest.csv');
-    ManifestExporter.exportToCsv(sampleManifest, csvPath);
+    const txtPath = path.join(testOutputDir, 'manifest.txt');
+    ManifestExporter.exportToTxt(sampleManifest, txtPath);
 
-    expect(fs.existsSync(csvPath)).toBe(true);
-    const content = fs.readFileSync(csvPath);
-    // UTF-8 BOM (\uFEFF -> Buffer: 0xEF, 0xBB, 0xBF) 검증
-    expect(content[0]).toBe(0xef);
-    expect(content[1]).toBe(0xbb);
-    expect(content[2]).toBe(0xbf);
+    expect(fs.existsSync(txtPath)).toBe(true);
+    const buffer = fs.readFileSync(txtPath);
+    // UTF-16 LE BOM (\uFEFF -> Buffer: 0xFF, 0xFE) 검증
+    expect(buffer[0]).toBe(0xff);
+    expect(buffer[1]).toBe(0xfe);
+
+    // Adobe InDesign 데이터 병합 호환 탭 구분 헤더 '#QR코드' 포함 및 열 순서 검증
+    const txtString = buffer.toString('utf16le');
+    expect(txtString).toContain('관리번호\t이사회명\t직함\t성명\t#QR코드');
+    expect(txtString).toContain('00001\t고양후원이사회\t목사\t홍길동\t00001.png');
   });
 });

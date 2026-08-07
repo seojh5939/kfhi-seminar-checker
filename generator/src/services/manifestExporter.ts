@@ -4,31 +4,40 @@ import { ManifestRecord } from 'shared';
 
 export class ManifestExporter {
   /**
-   * ManifestRecord 배열을 수신하여 UTF-8 BOM 인코딩 CSV 파일로 저장
+   * ManifestRecord 배열을 수신하여 Adobe InDesign Data Merge 호환 UTF-16 LE 탭 구분 TXT 파일로 저장
    */
-  public static exportToCsv(records: ManifestRecord[], outputFilePath: string): void {
+  public static exportToTxt(records: ManifestRecord[], outputFilePath: string): void {
     const dir = path.dirname(outputFilePath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    const headers = ['관리번호', '성명', '소속', '직함', '파일명', '생성일시'];
+    // Adobe InDesign 탭 구분 TXT 데이터 병합 헤더 (고정 규격: 관리번호, 이사회명, 직함, 성명, #QR코드)
+    const headers = ['관리번호', '이사회명', '직함', '성명', '#QR코드'];
     const rows = records.map((rec) => [
-      `"${rec.managementNumber}"`,
-      `"${rec.name.replace(/"/g, '""')}"`,
-      `"${rec.affiliation.replace(/"/g, '""')}"`,
-      `"${rec.title.replace(/"/g, '""')}"`,
-      `"${rec.fileName.replace(/"/g, '""')}"`,
-      `"${rec.createdAt}"`,
+      rec.managementNumber,
+      rec.affiliation,
+      rec.title,
+      rec.name,
+      rec.fileName,
     ]);
 
-    const csvContent = [
-      headers.join(','),
-      ...rows.map((row) => row.join(',')),
+    const txtContent = [
+      headers.join('\t'),
+      ...rows.map((row) => row.join('\t')),
     ].join('\r\n');
 
-    // Windows Excel 한글 깨짐 방지를 위해 UTF-8 BOM(\uFEFF) 추가
-    const utf8Bom = '\uFEFF';
-    fs.writeFileSync(outputFilePath, utf8Bom + csvContent, { encoding: 'utf8' });
+    // Adobe InDesign 탭 구분 데이터 병합 표준: UTF-16 LE (BOM \uFEFF 포함)
+    const utf16leBom = '\uFEFF';
+    const buffer = Buffer.from(utf16leBom + txtContent, 'utf16le');
+    fs.writeFileSync(outputFilePath, buffer);
+  }
+
+  /**
+   * 기존 CSV 내보내기 하위 호환성 (TXT 포맷으로 투명 이관)
+   */
+  public static exportToCsv(records: ManifestRecord[], outputFilePath: string): void {
+    const txtPath = outputFilePath.replace(/\.csv$/i, '.txt');
+    this.exportToTxt(records, txtPath);
   }
 }
