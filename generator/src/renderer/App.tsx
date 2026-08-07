@@ -50,6 +50,82 @@ export function App() {
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
   const [showBgModal, setShowBgModal] = useState<boolean>(false);
 
+  // 개별 1줄 입력 탭 State
+  const [activeTab, setActiveTab] = useState<'batch' | 'single'>('batch');
+  const [singleMgmtNo, setSingleMgmtNo] = useState<string>('90001');
+  const [singleName, setSingleName] = useState<string>('');
+  const [singleAffiliation, setSingleAffiliation] = useState<string>('');
+  const [singleTitle, setSingleTitle] = useState<string>('');
+  const [singleOutputDir, setSingleOutputDir] = useState<string | null>(null);
+  const [singleGenerating, setSingleGenerating] = useState<boolean>(false);
+  const [singleResult, setSingleResult] = useState<{
+    success: boolean;
+    fileName: string;
+    filePath: string;
+    manifestPath: string;
+  } | null>(null);
+
+  const handleSingleSelectOutputDir = async () => {
+    if (window.electron) {
+      const selected = await window.electron.selectOutputDir();
+      if (selected) setSingleOutputDir(selected);
+    } else {
+      setSingleOutputDir('C:\\Exported_QRCodes');
+    }
+  };
+
+  const handleSingleGenerate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!/^\d{5}$/.test(singleMgmtNo)) {
+      alert('관리번호는 5자리 숫자(예: 90001)로 입력해야 합니다.');
+      return;
+    }
+    if (!singleName.trim() || !singleAffiliation.trim() || !singleTitle.trim()) {
+      alert('성명, 소속(이사회명), 직함을 모두 입력해 주세요.');
+      return;
+    }
+    if (!singleOutputDir) {
+      alert('QR 이미지를 저장할 폴더를 지정해 주세요.');
+      return;
+    }
+
+    setSingleGenerating(true);
+    const singleAttendee: AttendeeInput = {
+      managementNumber: singleMgmtNo.trim(),
+      name: singleName.trim(),
+      affiliation: singleAffiliation.trim(),
+      title: singleTitle.trim(),
+    };
+
+    if (window.electron) {
+      const res = await window.electron.generateQRCodes({
+        attendees: [singleAttendee],
+        outputDir: singleOutputDir,
+      });
+
+      if (res.success) {
+        setSingleResult({
+          success: true,
+          fileName: `${singleMgmtNo.trim()}.png`,
+          filePath: `${singleOutputDir}\\${singleMgmtNo.trim()}.png`,
+          manifestPath: res.manifestPath,
+        });
+      } else {
+        alert(`개별 생성 실패: ${res.error}`);
+      }
+    } else {
+      // Mock fallback for web
+      setSingleResult({
+        success: true,
+        fileName: `${singleMgmtNo.trim()}.png`,
+        filePath: `${singleOutputDir}\\${singleMgmtNo.trim()}.png`,
+        manifestPath: `${singleOutputDir}\\manifest.txt`,
+      });
+    }
+
+    setSingleGenerating(false);
+  };
+
   const handleBgImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -228,16 +304,16 @@ export function App() {
   };
 
   return (
-    <div className="app-container" style={{ position: 'relative', zIndex: 1, minHeight: '100vh', backgroundColor: customBg ? 'transparent' : undefined }}>
-      {/* 1920x1080 창 픽셀 100% 맞춤 고정 배경 레이어 (우측 잘림 방지: objectFit '100% 100%') */}
+    <div className="app-container" style={{ position: 'relative', zIndex: 1, minHeight: '100vh', padding: '0 24px 24px 24px', backgroundColor: customBg ? 'transparent' : undefined }}>
+      {/* 1920x1080 고정 배경 레이어 (상단 Bar 가림 방지를 위해 Y 80px 기준점 적용, 하단까지 100% 핏) */}
       {customBg && (
         <div
           style={{
             position: 'fixed',
-            top: 0,
+            top: '80px',
             left: 0,
             width: '100vw',
-            height: '100vh',
+            height: 'calc(100vh - 80px)',
             zIndex: -1,
             overflow: 'hidden',
             pointerEvents: 'none',
@@ -256,17 +332,20 @@ export function App() {
           />
         </div>
       )}
+      {/* 헤더 (상단 Bar 패딩 제거 및 최상단 틈새 0px 밀착) */}
       <header
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: '24px',
+          marginBottom: '20px',
+          marginTop: 0,
           padding: '16px 24px',
           backgroundColor: 'rgba(15, 23, 42, 0.88)',
           backdropFilter: 'blur(12px)',
-          borderRadius: '16px',
+          borderRadius: '0 0 16px 16px',
           border: '1px solid rgba(255, 255, 255, 0.12)',
+          borderTop: 'none',
           boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
         }}
       >
@@ -281,7 +360,7 @@ export function App() {
               행사 출입관리 QR코드 생성기
             </h1>
             <p className="subtitle" style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#cbd5e1' }}>
-              기아대책 오프라인 행사 전용 암호화 QR 대량 인코더
+              기아대책 오프라인 행사 전용 암호화 QR 인코더
             </p>
           </div>
         </div>
@@ -294,7 +373,50 @@ export function App() {
         </button>
       </header>
 
-      {/* STEP 1 & 2: 파일 업로드 및 검증 */}
+      {/* 대량 / 개별 생성 탭 버튼 바 */}
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '8px' }}>
+        <button
+          onClick={() => setActiveTab('batch')}
+          style={{
+            flex: 1,
+            padding: '14px 20px',
+            borderRadius: '10px',
+            border: activeTab === 'batch' ? '2px solid #38bdf8' : '1px solid #334155',
+            backgroundColor: activeTab === 'batch' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(30, 41, 59, 0.88)',
+            color: activeTab === 'batch' ? '#38bdf8' : '#94a3b8',
+            fontWeight: 'bold',
+            fontSize: '15px',
+            cursor: 'pointer',
+            backdropFilter: 'blur(8px)',
+            transition: 'all 0.2s ease',
+          }}
+        >
+          📁 1. 엑셀 명단 대량 QR 생성
+        </button>
+        <button
+          onClick={() => setActiveTab('single')}
+          style={{
+            flex: 1,
+            padding: '14px 20px',
+            borderRadius: '10px',
+            border: activeTab === 'single' ? '2px solid #38bdf8' : '1px solid #334155',
+            backgroundColor: activeTab === 'single' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(30, 41, 59, 0.88)',
+            color: activeTab === 'single' ? '#38bdf8' : '#94a3b8',
+            fontWeight: 'bold',
+            fontSize: '15px',
+            cursor: 'pointer',
+            backdropFilter: 'blur(8px)',
+            transition: 'all 0.2s ease',
+          }}
+        >
+          ✍️ 2. 개별 1줄 수동 입력 QR 생성 (긴급)
+        </button>
+      </div>
+
+      {/* 탭 1: 엑셀 명단 대량 생성 */}
+      {activeTab === 'batch' && (
+        <>
+          {/* STEP 1 & 2: 파일 업로드 및 검증 */}
       {!completedResult && !isGenerating && (
         <section className="glass-card">
           <h2 style={{ fontSize: '16px', marginBottom: '16px', fontWeight: 600 }}>
@@ -561,6 +683,165 @@ export function App() {
           )}
         </section>
       )}
+    </>
+  )}
+
+      {/* 탭 2: 개별 1줄 수동 입력 (긴급 참석자 QR 생성) */}
+      {activeTab === 'single' && (
+        <section className="glass-card">
+          <h2 style={{ fontSize: '18px', marginBottom: '8px', fontWeight: 700, color: '#38bdf8' }}>
+            ✍️ 개별 긴급 참석자 암호화 QR 생성
+          </h2>
+          <p className="subtitle" style={{ marginBottom: '24px' }}>
+            엑셀 명단에 없는 1명의 참석자 정보(관리번호, 성명, 소속, 직함)를 직접 입력하여 즉시 암호화 QR 이미지(PNG)를 만듭니다.
+          </p>
+
+          <form onSubmit={handleSingleGenerate}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#cbd5e1' }}>
+                  1. 관리번호 (5자리 숫자) *
+                </label>
+                <input
+                  type="text"
+                  placeholder="예: 90001"
+                  maxLength={5}
+                  value={singleMgmtNo}
+                  onChange={(e) => setSingleMgmtNo(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: '1px solid #475569',
+                    backgroundColor: '#0f172a',
+                    color: 'white',
+                    fontSize: '14px',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#cbd5e1' }}>
+                  2. 참석자 성명 *
+                </label>
+                <input
+                  type="text"
+                  placeholder="예: 홍길동"
+                  value={singleName}
+                  onChange={(e) => setSingleName(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: '1px solid #475569',
+                    backgroundColor: '#0f172a',
+                    color: 'white',
+                    fontSize: '14px',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#cbd5e1' }}>
+                  3. 소속 / 이사회명 *
+                </label>
+                <input
+                  type="text"
+                  placeholder="예: 서울후원이사회 / 본부"
+                  value={singleAffiliation}
+                  onChange={(e) => setSingleAffiliation(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: '1px solid #475569',
+                    backgroundColor: '#0f172a',
+                    color: 'white',
+                    fontSize: '14px',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#cbd5e1' }}>
+                  4. 직함 *
+                </label>
+                <input
+                  type="text"
+                  placeholder="예: 이사 / 목사 / 스탭"
+                  value={singleTitle}
+                  onChange={(e) => setSingleTitle(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: '1px solid #475569',
+                    backgroundColor: '#0f172a',
+                    color: 'white',
+                    fontSize: '14px',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* 저장 폴더 지정 */}
+            <div style={{ padding: '16px', backgroundColor: '#0f172a', borderRadius: '10px', border: '1px solid #334155', marginBottom: '24px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '8px', color: '#38bdf8' }}>
+                📂 QR 이미지 저장 폴더 지정 *
+              </label>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <input
+                  type="text"
+                  readOnly
+                  value={singleOutputDir || ''}
+                  placeholder="저장 폴더를 선택해 주세요"
+                  style={{
+                    flex: 1,
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid #475569',
+                    backgroundColor: '#1e293b',
+                    color: 'white',
+                    fontSize: '13px',
+                  }}
+                />
+                <button type="button" className="btn btn-secondary" onClick={handleSingleSelectOutputDir}>
+                  폴더 선택
+                </button>
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'right' }}>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                style={{ padding: '12px 28px', fontSize: '15px' }}
+                disabled={singleGenerating}
+              >
+                {singleGenerating ? '⚡ 단건 암호화 QR 생성 중...' : '⚡ 단건 암호화 QR 코드 생성하기'}
+              </button>
+            </div>
+          </form>
+
+          {/* 단건 생성 결과 */}
+          {singleResult && (
+            <div style={{ marginTop: '24px', padding: '20px', backgroundColor: 'rgba(16, 185, 129, 0.12)', borderRadius: '12px', border: '1px solid rgba(16, 185, 129, 0.4)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#34d399', fontWeight: 'bold', fontSize: '16px', marginBottom: '8px' }}>
+                <span>🎉 개별 QR 생성 완료!</span>
+              </div>
+              <div style={{ fontSize: '14px', color: '#f8fafc', lineHeight: 1.6 }}>
+                생성 파일: <strong>{singleResult.fileName}</strong><br />
+                저장 위치: <span style={{ fontSize: '13px', color: '#cbd5e1' }}>{singleResult.filePath}</span><br />
+                매니페스트: <span style={{ fontSize: '13px', color: '#cbd5e1' }}>{singleResult.manifestPath}</span>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* 설정 팝업 모달 */}
       {showSettingsModal && (
@@ -740,22 +1021,9 @@ export function App() {
 
               {customBg && (
                 <div style={{ marginTop: '16px' }}>
-                  <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '8px' }}>현재 적용된 배경화면 미리보기:</div>
-                  <img
-                    src={customBg}
-                    alt="Custom Generator Background Preview"
-                    style={{
-                      width: '100%',
-                      height: '150px',
-                      objectFit: 'cover',
-                      borderRadius: '8px',
-                      border: '1px solid #475569',
-                    }}
-                  />
                   <button
                     onClick={handleResetBg}
                     style={{
-                      marginTop: '12px',
                       padding: '8px 16px',
                       backgroundColor: '#991b1b',
                       color: 'white',

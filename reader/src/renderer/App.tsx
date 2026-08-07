@@ -241,7 +241,7 @@ export const App: React.FC = () => {
     <div
       style={{
         fontFamily: 'system-ui, -apple-system, sans-serif',
-        padding: '24px',
+        padding: '0 24px 24px 24px',
         backgroundColor: customBg ? 'transparent' : '#0f172a',
         color: '#f8fafc',
         width: '100%',
@@ -252,15 +252,15 @@ export const App: React.FC = () => {
         zIndex: 1,
       }}
     >
-      {/* 1920x1080 창 픽셀 맞춤 선명한 고정 배경 레이어 (어두운 딤/블러 100% 제거) */}
+      {/* 1920x1080 고정 배경 레이어 (상단 Bar 가림 방지를 위해 Y 80px 기준점 적용, 하단까지 100% 핏) */}
       {customBg && (
         <div
           style={{
             position: 'fixed',
-            top: 0,
+            top: '80px',
             left: 0,
             width: '100vw',
-            height: '100vh',
+            height: 'calc(100vh - 80px)',
             zIndex: -1,
             overflow: 'hidden',
             pointerEvents: 'none',
@@ -279,18 +279,20 @@ export const App: React.FC = () => {
           />
         </div>
       )}
-      {/* 헤더 (상단 Dark Glass Bar 패널 적용으로 가독성 100% 보장) */}
+      {/* 헤더 (상단 Bar 패딩 제거 및 최상단 틈새 0px 밀착) */}
       <header
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           marginBottom: '24px',
+          marginTop: 0,
           padding: '16px 24px',
           backgroundColor: 'rgba(15, 23, 42, 0.88)',
           backdropFilter: 'blur(12px)',
-          borderRadius: '16px',
+          borderRadius: '0 0 16px 16px',
           border: '1px solid rgba(255, 255, 255, 0.12)',
+          borderTop: 'none',
           boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
         }}
       >
@@ -867,22 +869,9 @@ export const App: React.FC = () => {
 
               {customBg && (
                 <div style={{ marginTop: '16px' }}>
-                  <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '8px' }}>현재 적용된 배경화면 미리보기:</div>
-                  <img
-                    src={customBg}
-                    alt="Custom Reader Background Preview"
-                    style={{
-                      width: '100%',
-                      height: '150px',
-                      objectFit: 'cover',
-                      borderRadius: '8px',
-                      border: '1px solid #475569',
-                    }}
-                  />
                   <button
                     onClick={handleResetBg}
                     style={{
-                      marginTop: '12px',
                       padding: '8px 16px',
                       backgroundColor: '#991b1b',
                       color: 'white',
