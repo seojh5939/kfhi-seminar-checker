@@ -241,7 +241,6 @@ export const App: React.FC = () => {
     <div
       style={{
         fontFamily: 'system-ui, -apple-system, sans-serif',
-        padding: '0 24px 24px 24px',
         backgroundColor: customBg ? 'transparent' : '#0f172a',
         color: '#f8fafc',
         width: '100%',
@@ -279,11 +278,11 @@ export const App: React.FC = () => {
           />
         </div>
       )}
-      {/* 헤더 (창 전체 100% Full Width 풀-위드 패널 적용) */}
+
+      {/* 100% Full Width 상단 Header Bar */}
       <header
         style={{
-          width: '100vw',
-          marginLeft: '-24px',
+          width: '100%',
           marginTop: 0,
           marginBottom: '24px',
           padding: '16px 0',
@@ -347,7 +346,8 @@ export const App: React.FC = () => {
         </div>
       </header>
 
-      {/* 장소 미설정 폼 */}
+      {/* 메인 컨텐츠 영역 (좌우 24px 패딩 적용) */}
+      <main style={{ padding: '0 24px 24px 24px' }}>
       {!isLocationSet ? (
         <div style={{ maxWidth: '400px', margin: '60px auto', backgroundColor: '#1e293b', padding: '32px', borderRadius: '12px', textAlign: 'center' }}>
           <h2 style={{ fontSize: '18px', marginBottom: '16px', color: '#f8fafc' }}>스캔 장소 등록</h2>
@@ -487,6 +487,7 @@ export const App: React.FC = () => {
           </div>
         </div>
       )}
+      </main>
 
       {/* 설정 팝업 모달 */}
       {showSettingsModal && (

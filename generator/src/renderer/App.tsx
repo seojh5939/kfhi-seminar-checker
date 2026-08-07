@@ -304,7 +304,7 @@ export function App() {
   };
 
   return (
-    <div className="app-container" style={{ position: 'relative', zIndex: 1, minHeight: '100vh', padding: '0 24px 24px 24px', backgroundColor: customBg ? 'transparent' : undefined }}>
+    <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh', width: '100%', backgroundColor: customBg ? 'transparent' : '#0f172a' }}>
       {/* 1920x1080 고정 배경 레이어 (상단 Bar 가림 방지를 위해 Y 80px 기준점 적용, 하단까지 100% 핏) */}
       {customBg && (
         <div
@@ -332,11 +332,11 @@ export function App() {
           />
         </div>
       )}
-      {/* 헤더 (창 전체 100% Full Width 풀-위드 패널 적용) */}
+
+      {/* 100% Full Width 상단 Header Bar */}
       <header
         style={{
-          width: '100vw',
-          marginLeft: '-24px',
+          width: '100%',
           marginTop: 0,
           marginBottom: '20px',
           padding: '16px 0',
@@ -384,6 +384,9 @@ export function App() {
           </button>
         </div>
       </header>
+
+      {/* 메인 컨텐츠 영역 */}
+      <main className="app-container" style={{ paddingTop: 0, marginTop: 0 }}>
 
       {/* 대량 / 개별 생성 탭 버튼 바 */}
       <div style={{ display: 'flex', gap: '12px', marginBottom: '8px' }}>
@@ -854,6 +857,7 @@ export function App() {
           )}
         </section>
       )}
+      </main>
 
       {/* 설정 팝업 모달 */}
       {showSettingsModal && (
