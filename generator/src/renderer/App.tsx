@@ -42,6 +42,32 @@ export function App() {
     }>;
   } | null>(null);
 
+  const [customBg, setCustomBg] = useState<string>(() => {
+    return localStorage.getItem('kfhi_generator_bg') || '';
+  });
+  const [showBgModal, setShowBgModal] = useState<boolean>(false);
+
+  const handleBgImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (base64) {
+        setCustomBg(base64);
+        localStorage.setItem('kfhi_generator_bg', base64);
+        alert('배경화면이 성공적으로 변경되었습니다!');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleResetBg = () => {
+    setCustomBg('');
+    localStorage.removeItem('kfhi_generator_bg');
+    alert('기본 배경(다크 네이비)으로 초기화되었습니다.');
+  };
+
   useEffect(() => {
     if (window.electron?.onProgress) {
       const cleanup = window.electron.onProgress((data) => {
@@ -199,15 +225,39 @@ export function App() {
   };
 
   return (
-    <div className="app-container">
+    <div
+      className="app-container"
+      style={
+        customBg
+          ? {
+              backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.65), rgba(15, 23, 42, 0.65)), url(${customBg})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundAttachment: 'fixed',
+              minHeight: '100vh',
+            }
+          : {}
+      }
+    >
       <header>
         <div className="logo-group">
-          <div className="logo-badge">KFHI</div>
+          <img
+            src="./kfhi-logo.png"
+            alt="희망친구 기아대책"
+            onError={(e) => {
+              // 이미지 로드 실패 시 텍스트 배지 fallback
+              (e.target as HTMLElement).style.display = 'none';
+            }}
+            style={{ height: '42px', objectFit: 'contain', display: 'block' }}
+          />
           <div>
             <h1>행사 출입관리 QR코드 생성기</h1>
             <p className="subtitle">기아대책 오프라인 행사 전용 암호화 QR 대량 인코더</p>
           </div>
         </div>
+        <button className="btn btn-secondary" onClick={() => setShowBgModal(true)}>
+          🖼️ 배경화면 설정
+        </button>
       </header>
 
       {/* STEP 1 & 2: 파일 업로드 및 검증 */}
@@ -476,6 +526,113 @@ export function App() {
             </div>
           )}
         </section>
+      )}
+
+      {/* 배경화면 변경 및 픽셀 가이드 모달 */}
+      {showBgModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9990,
+            padding: '24px',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#1e293b',
+              padding: '32px',
+              borderRadius: '20px',
+              width: '100%',
+              maxWidth: '560px',
+              border: '1px solid #475569',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
+              color: '#f8fafc',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '20px',
+                paddingBottom: '12px',
+                borderBottom: '1px solid #334155',
+              }}
+            >
+              <h2 style={{ margin: 0, fontSize: '18px', color: '#38bdf8', fontWeight: 'bold' }}>
+                🖼️ 사용자 정의 배경화면 설정
+              </h2>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowBgModal(false)}
+                style={{ padding: '6px 12px', fontSize: '13px' }}
+              >
+                ✖ 닫기
+              </button>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>
+                배경화면 이미지 선택 (PNG / JPG 권장, 1920×1080 기준)
+              </label>
+              <input
+                type="file"
+                accept="image/png, image/jpeg"
+                onChange={handleBgImageUpload}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '8px',
+                  border: '1px solid #475569',
+                  backgroundColor: '#0f172a',
+                  color: 'white',
+                  fontSize: '13px',
+                }}
+              />
+            </div>
+
+            {customBg && (
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '8px' }}>현재 설정된 배경 미리보기:</div>
+                <img
+                  src={customBg}
+                  alt="Custom Background Preview"
+                  style={{
+                    width: '100%',
+                    height: '140px',
+                    objectFit: 'cover',
+                    borderRadius: '8px',
+                    border: '1px solid #334155',
+                  }}
+                />
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
+              {customBg && (
+                <button
+                  className="btn"
+                  onClick={handleResetBg}
+                  style={{ backgroundColor: '#991b1b', color: 'white' }}
+                >
+                  🗑️ 배경 초기화 (다크 네이비)
+                </button>
+              )}
+              <button className="btn btn-primary" onClick={() => setShowBgModal(false)}>
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
