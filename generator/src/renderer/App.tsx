@@ -332,45 +332,57 @@ export function App() {
           />
         </div>
       )}
-      {/* 헤더 (상단 Bar 패딩 제거 및 최상단 틈새 0px 밀착) */}
+      {/* 헤더 (창 전체 100% Full Width 풀-위드 패널 적용) */}
       <header
         style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '20px',
+          width: '100vw',
+          marginLeft: '-24px',
           marginTop: 0,
-          padding: '16px 24px',
+          marginBottom: '20px',
+          padding: '16px 0',
           backgroundColor: 'rgba(15, 23, 42, 0.88)',
           backdropFilter: 'blur(12px)',
-          borderRadius: '0 0 16px 16px',
-          border: '1px solid rgba(255, 255, 255, 0.12)',
-          borderTop: 'none',
+          borderRadius: 0,
+          borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
           boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+          boxSizing: 'border-box',
         }}
       >
-        <div className="logo-group" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <img
-            src={kfhiLogo}
-            alt="희망친구 기아대책"
-            style={{ height: '42px', objectFit: 'contain', display: 'block' }}
-          />
-          <div>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: '#38bdf8' }}>
-              행사 출입관리 QR코드 생성기
-            </h1>
-            <p className="subtitle" style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#cbd5e1' }}>
-              기아대책 오프라인 행사 전용 암호화 QR 인코더
-            </p>
-          </div>
-        </div>
-        <button
-          className="btn btn-secondary"
-          onClick={() => setShowSettingsModal(true)}
-          style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', gap: '6px' }}
+        <div
+          style={{
+            maxWidth: '1280px',
+            width: '100%',
+            margin: '0 auto',
+            padding: '0 24px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            boxSizing: 'border-box',
+          }}
         >
-          ⚙️ 설정
-        </button>
+          <div className="logo-group" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <img
+              src={kfhiLogo}
+              alt="희망친구 기아대책"
+              style={{ height: '42px', objectFit: 'contain', display: 'block' }}
+            />
+            <div>
+              <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: '#38bdf8' }}>
+                행사 출입관리 QR코드 생성기
+              </h1>
+              <p className="subtitle" style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#cbd5e1' }}>
+                기아대책 오프라인 행사 전용 암호화 QR 인코더
+              </p>
+            </div>
+          </div>
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowSettingsModal(true)}
+            style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            ⚙️ 설정
+          </button>
+        </div>
       </header>
 
       {/* 대량 / 개별 생성 탭 버튼 바 */}

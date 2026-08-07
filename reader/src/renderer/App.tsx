@@ -279,60 +279,72 @@ export const App: React.FC = () => {
           />
         </div>
       )}
-      {/* 헤더 (상단 Bar 패딩 제거 및 최상단 틈새 0px 밀착) */}
+      {/* 헤더 (창 전체 100% Full Width 풀-위드 패널 적용) */}
       <header
         style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '24px',
+          width: '100vw',
+          marginLeft: '-24px',
           marginTop: 0,
-          padding: '16px 24px',
+          marginBottom: '24px',
+          padding: '16px 0',
           backgroundColor: 'rgba(15, 23, 42, 0.88)',
           backdropFilter: 'blur(12px)',
-          borderRadius: '0 0 16px 16px',
-          border: '1px solid rgba(255, 255, 255, 0.12)',
-          borderTop: 'none',
+          borderRadius: 0,
+          borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
           boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+          boxSizing: 'border-box',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <img
-            src={kfhiLogo}
-            alt="희망친구 기아대책"
-            style={{ height: '42px', objectFit: 'contain', display: 'block' }}
-          />
-          <div>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: '#38bdf8' }}>
-              기아대책 출입관리 QR 인식기
-            </h1>
-            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#cbd5e1' }}>
-              {isLocationSet ? `현재 장소: [ ${locationName} ]` : '스캔 시작 전 장소를 먼저 등록해주세요'}
-            </p>
+        <div
+          style={{
+            maxWidth: '1280px',
+            width: '100%',
+            margin: '0 auto',
+            padding: '0 24px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            boxSizing: 'border-box',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <img
+              src={kfhiLogo}
+              alt="희망친구 기아대책"
+              style={{ height: '42px', objectFit: 'contain', display: 'block' }}
+            />
+            <div>
+              <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 'bold', color: '#38bdf8' }}>
+                기아대책 출입관리 QR 인식기
+              </h1>
+              <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#cbd5e1' }}>
+                {isLocationSet ? `현재 장소: [ ${locationName} ]` : '스캔 시작 전 장소를 먼저 등록해주세요'}
+              </p>
+            </div>
           </div>
+          {isLocationSet && (
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => setShowSettingsModal(true)}
+                style={{
+                  backgroundColor: '#334155',
+                  color: '#f8fafc',
+                  border: '1px solid #475569',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                }}
+              >
+                ⚙️ 설정
+              </button>
+            </div>
+          )}
         </div>
-        {isLocationSet && (
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={() => setShowSettingsModal(true)}
-              style={{
-                backgroundColor: '#334155',
-                color: '#f8fafc',
-                border: '1px solid #475569',
-                padding: '8px 16px',
-                borderRadius: '6px',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-              }}
-            >
-              ⚙️ 설정
-            </button>
-          </div>
-        )}
       </header>
 
       {/* 장소 미설정 폼 */}
