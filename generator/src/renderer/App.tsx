@@ -429,319 +429,319 @@ export function App() {
 
       {/* 메인 컨텐츠 영역 */}
       <main className="app-container" style={{ paddingTop: 0, marginTop: 0 }}>
-
-      {/* 대량 / 개별 생성 탭 버튼 바 */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '8px' }}>
-        <button
-          onClick={() => setActiveTab('batch')}
-          style={{
-            flex: 1,
-            padding: '14px 20px',
-            borderRadius: '10px',
-            border: activeTab === 'batch' ? '2px solid #38bdf8' : '1px solid #334155',
-            backgroundColor: activeTab === 'batch' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(30, 41, 59, 0.88)',
-            color: activeTab === 'batch' ? '#38bdf8' : '#94a3b8',
-            fontWeight: 'bold',
-            fontSize: '15px',
-            cursor: 'pointer',
-            backdropFilter: 'blur(8px)',
-            transition: 'all 0.2s ease',
-          }}
-        >
-          📁 1. 엑셀 명단 대량 QR 생성
-        </button>
-        <button
-          onClick={() => setActiveTab('single')}
-          style={{
-            flex: 1,
-            padding: '14px 20px',
-            borderRadius: '10px',
-            border: activeTab === 'single' ? '2px solid #38bdf8' : '1px solid #334155',
-            backgroundColor: activeTab === 'single' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(30, 41, 59, 0.88)',
-            color: activeTab === 'single' ? '#38bdf8' : '#94a3b8',
-            fontWeight: 'bold',
-            fontSize: '15px',
-            cursor: 'pointer',
-            backdropFilter: 'blur(8px)',
-            transition: 'all 0.2s ease',
-          }}
-        >
-          ✍️ 2. 개별 1줄 수동 입력 QR 생성 (긴급)
-        </button>
-      </div>
-
-      {/* 탭 1: 엑셀 명단 대량 생성 */}
-      {activeTab === 'batch' && (
-        <>
-          {/* STEP 1 & 2: 파일 업로드 및 검증 */}
-      {!completedResult && !isGenerating && (
-        <section className="glass-card">
-          <h2 style={{ fontSize: '16px', marginBottom: '16px', fontWeight: 600 }}>
-            1. 참석자 명단 엑셀 파일 선택 (.xlsx)
-          </h2>
-
-          <div className="dropzone" onClick={handleSelectExcel}>
-            <div className="dropzone-icon">📁</div>
-            <p style={{ fontWeight: 500, fontSize: '15px', marginBottom: '4px' }}>
-              {filePath ? filePath : '클릭하여 참석자 명단 엑셀(.xlsx) 파일 업로드'}
+        {/* STEP 4: 결과 화면 (생성 완료 시 탭 바를 숨기고 전면 결과 화면 표출) */}
+        {completedResult ? (
+          <section className="glass-card" style={{ textAlign: 'center', padding: '36px 24px' }}>
+            <div style={{ fontSize: '44px', marginBottom: '8px' }}>🎉</div>
+            <h2 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--success-color)', marginBottom: '8px' }}>
+              QR코드 생성 완료!
+            </h2>
+            <p className="subtitle" style={{ marginBottom: '20px' }}>
+              총 {completedResult.count}건의 암호화 QR 이미지 및 매니페스트 TXT가 정상 저장되었습니다.
             </p>
-            <p className="subtitle">5자리 관리번호, 성명, 소속, 직함 헤더 항목 자동 인식</p>
-          </div>
 
-          {isValidating && (
-            <div style={{ textAlign: 'center', marginTop: '16px', color: 'var(--accent-cyan)' }}>
-              엑셀 입력 데이터 정밀 검증 중...
-            </div>
-          )}
-
-          {/* 검증 오류 시 */}
-          {validationResult && !validationResult.isValid && (
-            <div style={{ marginTop: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                <span className="badge badge-error">검증 실패</span>
-                <span style={{ fontSize: '13px', color: 'var(--error-color)' }}>
-                  총 {validationResult.errors.length}건의 입력 오류가 발견되었습니다. 엑셀을 수정 후 다시 업로드하세요.
-                </span>
+            <div className="stat-grid" style={{ marginBottom: '20px' }}>
+              <div className="stat-item">
+                <div className="stat-label">저장 완료 항목</div>
+                <div className="stat-value">{completedResult.count} 건</div>
               </div>
+              <div className="stat-item">
+                <div className="stat-label">매니페스트 파일</div>
+                <div className="stat-value" style={{ fontSize: '14px', wordBreak: 'break-all' }}>
+                  manifest.txt (UTF-16 LE)
+                </div>
+              </div>
+            </div>
 
-              <div className="table-container">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>행번호</th>
-                      <th>관리번호</th>
-                      <th>성명</th>
-                      <th>오류 사유</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {validationResult.errors.map((err, idx) => (
-                      <tr key={idx}>
-                        <td>{err.rowNumber}행</td>
-                        <td>{err.managementNumber || '-'}</td>
-                        <td>{err.name || '-'}</td>
-                        <td className="reason">{err.reason}</td>
+            {/* 3개 버튼 구성 (반응형 btn-group) */}
+            <div className="btn-group" style={{ marginBottom: '24px' }}>
+              <button className="btn btn-primary" onClick={() => handleOpenFolder(completedResult.outputDir)}>
+                📂 생성 폴더 열기
+              </button>
+              <button
+                className="btn btn-secondary"
+                style={{ background: 'rgba(56, 189, 248, 0.15)', borderColor: 'var(--accent-cyan)', color: 'var(--accent-cyan)' }}
+                onClick={handleVerifyOutput}
+                disabled={isVerifying}
+              >
+                {isVerifying ? '🔍 검증 진행 중...' : '🔍 생성물 검증하기'}
+              </button>
+              <button className="btn btn-secondary" onClick={handleReset}>
+                🔄 새 작업하기 (메인화면으로 복귀)
+              </button>
+            </div>
+
+            {/* 검증 진행 상태 */}
+            {isVerifying && (
+              <div style={{ textAlign: 'center', margin: '20px 0', color: 'var(--accent-cyan)' }}>
+                생성된 QR PNG 복호화 및 매니페스트 엑셀 대조 검증 작업 수행 중...
+              </div>
+            )}
+
+            {/* 검증 결과 리포트 */}
+            {verificationSummary && (
+              <div style={{ marginTop: '24px', textAlign: 'left', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    {verificationSummary.failCount === 0 ? (
+                      <span className="badge badge-success">검증 완료 (100% 정상)</span>
+                    ) : (
+                      <span className="badge badge-error">검증 주의 ({verificationSummary.failCount}건 실패)</span>
+                    )}
+                    <h3 style={{ fontSize: '16px', fontWeight: 600, margin: 0, whiteSpace: 'nowrap' }}>
+                      QR 복호화 및 매니페스트 대조 검증 리포트
+                    </h3>
+                  </div>
+                  <span style={{ fontSize: '13px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                    성공: <strong style={{ color: 'var(--success-color)' }}>{verificationSummary.successCount}</strong> / 전체: {verificationSummary.total}건
+                  </span>
+                </div>
+
+                <div className="table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>관리번호</th>
+                        <th>성명</th>
+                        <th>소속</th>
+                        <th>직함</th>
+                        <th>파일명</th>
+                        <th>상태</th>
+                        <th>복호화 평문 내용 (QR 스캔 원문)</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* 검증 성공 시 */}
-          {validationResult && validationResult.isValid && (
-            <div style={{ marginTop: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-                <span className="badge badge-success">검증 성공</span>
-                <span style={{ fontSize: '14px', fontWeight: 500 }}>
-                  총 {validationResult.attendees.length}명의 정상 참석자가 확인되었습니다.
-                </span>
-              </div>
-
-              <div className="stat-grid">
-                <div className="stat-item">
-                  <div className="stat-label">총 생성 대상자</div>
-                  <div className="stat-value">{validationResult.attendees.length} 명</div>
-                </div>
-                <div className="stat-item">
-                  <div className="stat-label">소속 이사회 수</div>
-                  <div className="stat-value">{getUniqueAffiliationCount(validationResult.attendees)} 개</div>
-                </div>
-              </div>
-
-              {/* 저장 폴더 선택 */}
-              <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
-                <h3 style={{ fontSize: '14px', marginBottom: '12px', fontWeight: 600 }}>
-                  2. QR 이미지 및 매니페스트 저장 폴더 지정
-                </h3>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <input
-                    type="text"
-                    readOnly
-                    value={outputDir || ''}
-                    placeholder="저장 폴더 경로를 선택하세요"
-                    style={{
-                      flex: 1,
-                      padding: '10px 14px',
-                      borderRadius: '8px',
-                      border: '1px solid var(--border-color)',
-                      background: 'rgba(15, 23, 42, 0.6)',
-                      color: 'var(--text-main)',
-                      fontSize: '13px',
-                    }}
-                  />
-                  <button className="btn btn-secondary" onClick={handleSelectOutputDir}>
-                    폴더 선택
-                  </button>
+                    </thead>
+                    <tbody>
+                      {verificationSummary.items.map((item, idx) => (
+                        <tr key={idx}>
+                          <td style={{ fontWeight: 600 }}>{item.managementNumber}</td>
+                          <td>{item.name}</td>
+                          <td>{item.affiliation}</td>
+                          <td>{item.title}</td>
+                          <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{item.fileName}</td>
+                          <td>
+                            {item.status === 'success' ? (
+                              <span className="badge badge-success" style={{ padding: '2px 8px', fontSize: '11px' }}>
+                                성공
+                              </span>
+                            ) : (
+                              <span className="badge badge-error" style={{ padding: '2px 8px', fontSize: '11px' }}>
+                                실패
+                              </span>
+                            )}
+                          </td>
+                          <td className="allow-wrap" style={{ fontSize: '12px', fontFamily: 'monospace' }}>
+                            {item.status === 'success' && item.decryptedPayload ? (
+                              <span style={{ color: '#a5f3fc' }}>
+                                {`[${item.decryptedPayload.id}] ${item.decryptedPayload.n} / ${item.decryptedPayload.a} / ${item.decryptedPayload.t} (v${item.decryptedPayload.v})`}
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--error-color)' }}>{item.failReason}</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
-
-              {/* 생성 시작 버튼 */}
-              <div style={{ marginTop: '24px', textAlign: 'right' }}>
-                <button
-                  className="btn btn-primary"
-                  style={{ padding: '12px 28px', fontSize: '15px' }}
-                  disabled={!outputDir}
-                  onClick={handleStartGenerate}
-                >
-                  ⚡ 암호화 QR 코드 대량 생성 시작
-                </button>
-              </div>
+            )}
+          </section>
+        ) : (
+          /* 메인 탭 화면 (생성 작업 전 탭 선택 및 폼 입력 구역) */
+          <>
+            {/* 대량 / 개별 생성 탭 버튼 바 */}
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '8px' }}>
+              <button
+                onClick={() => setActiveTab('batch')}
+                style={{
+                  flex: 1,
+                  padding: '14px 20px',
+                  borderRadius: '10px',
+                  border: activeTab === 'batch' ? '2px solid #38bdf8' : '1px solid #334155',
+                  backgroundColor: activeTab === 'batch' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(30, 41, 59, 0.88)',
+                  color: activeTab === 'batch' ? '#38bdf8' : '#94a3b8',
+                  fontWeight: 'bold',
+                  fontSize: '15px',
+                  cursor: 'pointer',
+                  backdropFilter: 'blur(8px)',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                📁 1. 엑셀 명단 대량 QR 생성
+              </button>
+              <button
+                onClick={() => setActiveTab('single')}
+                style={{
+                  flex: 1,
+                  padding: '14px 20px',
+                  borderRadius: '10px',
+                  border: activeTab === 'single' ? '2px solid #38bdf8' : '1px solid #334155',
+                  backgroundColor: activeTab === 'single' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(30, 41, 59, 0.88)',
+                  color: activeTab === 'single' ? '#38bdf8' : '#94a3b8',
+                  fontWeight: 'bold',
+                  fontSize: '15px',
+                  cursor: 'pointer',
+                  backdropFilter: 'blur(8px)',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                ✍️ 2. 개별 1줄 수동 입력 QR 생성 (긴급)
+              </button>
             </div>
-          )}
-        </section>
-      )}
 
-      {/* STEP 3: 진행 중 */}
-      {isGenerating && progress && (
-        <section className="glass-card" style={{ textAlign: 'center', padding: '48px 24px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '8px' }}>
-            AES-256-GCM 암호화 QR 생성 진행 중...
-          </h2>
-          <p className="subtitle" style={{ marginBottom: '24px' }}>
-            지정한 폴더에 이미지(PNG) 저장 및 매니페스트 레코드를 작성 중입니다.
-          </p>
+            {/* 탭 1: 엑셀 명단 대량 생성 */}
+            {activeTab === 'batch' && (
+              <>
+                {/* STEP 1 & 2: 파일 업로드 및 검증 */}
+                {!isGenerating && (
+                  <section className="glass-card">
+                    <h2 style={{ fontSize: '16px', marginBottom: '16px', fontWeight: 600 }}>
+                      1. 참석자 명단 엑셀 파일 선택 (.xlsx)
+                    </h2>
 
-          <div className="progress-container">
-            <div className="progress-track">
-              <div
-                className="progress-fill"
-                style={{ width: `${Math.round((progress.current / progress.total) * 100)}%` }}
-              />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-muted)' }}>
-              <span>
-                처리 중: {progress.managementNumber} - {progress.attendeeName}
-              </span>
-              <span style={{ fontWeight: 700, color: 'var(--accent-cyan)' }}>
-                {progress.current} / {progress.total} ({Math.round((progress.current / progress.total) * 100)}%)
-              </span>
-            </div>
-          </div>
-        </section>
-      )}
+                    <div className="dropzone" onClick={handleSelectExcel}>
+                      <div className="dropzone-icon">📁</div>
+                      <p style={{ fontWeight: 500, fontSize: '15px', marginBottom: '4px' }}>
+                        {filePath ? filePath : '클릭하여 참석자 명단 엑셀(.xlsx) 파일 업로드'}
+                      </p>
+                      <p className="subtitle">5자리 관리번호, 성명, 소속, 직함 헤더 항목 자동 인식</p>
+                    </div>
 
-      {/* STEP 4: 완료 리포트 */}
-      {completedResult && (
-        <section className="glass-card" style={{ textAlign: 'center', padding: '36px 24px' }}>
-          <div style={{ fontSize: '44px', marginBottom: '8px' }}>🎉</div>
-          <h2 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--success-color)', marginBottom: '8px' }}>
-            QR코드 대량 생성 완료!
-          </h2>
-          <p className="subtitle" style={{ marginBottom: '20px' }}>
-            총 {completedResult.count}건의 암호화 QR 이미지 및 매니페스트 TXT가 정상 저장되었습니다.
-          </p>
+                    {isValidating && (
+                      <div style={{ textAlign: 'center', marginTop: '16px', color: 'var(--accent-cyan)' }}>
+                        엑셀 입력 데이터 정밀 검증 중...
+                      </div>
+                    )}
 
-          <div className="stat-grid" style={{ marginBottom: '20px' }}>
-            <div className="stat-item">
-              <div className="stat-label">저장 완료 항목</div>
-              <div className="stat-value">{completedResult.count} 건</div>
-            </div>
-            <div className="stat-item">
-              <div className="stat-label">매니페스트 파일</div>
-              <div className="stat-value" style={{ fontSize: '14px', wordBreak: 'break-all' }}>
-                manifest.txt (UTF-16 LE)
-              </div>
-            </div>
-          </div>
+                    {/* 검증 오류 시 */}
+                    {validationResult && !validationResult.isValid && (
+                      <div style={{ marginTop: '20px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                          <span className="badge badge-error">검증 실패</span>
+                          <span style={{ fontSize: '13px', color: 'var(--error-color)' }}>
+                            총 {validationResult.errors.length}건의 입력 오류가 발견되었습니다. 엑셀을 수정 후 다시 업로드하세요.
+                          </span>
+                        </div>
 
-          {/* 3개 버튼 구성 (반응형 btn-group) */}
-          <div className="btn-group" style={{ marginBottom: '24px' }}>
-            <button className="btn btn-primary" onClick={() => handleOpenFolder(completedResult.outputDir)}>
-              📂 생성 폴더 열기
-            </button>
-            <button
-              className="btn btn-secondary"
-              style={{ background: 'rgba(56, 189, 248, 0.15)', borderColor: 'var(--accent-cyan)', color: 'var(--accent-cyan)' }}
-              onClick={handleVerifyOutput}
-              disabled={isVerifying}
-            >
-              {isVerifying ? '🔍 검증 진행 중...' : '🔍 생성물 검증하기'}
-            </button>
-            <button className="btn btn-secondary" onClick={handleReset}>
-              🔄 새 엑셀 작업하기
-            </button>
-          </div>
+                        <div className="table-container">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>행번호</th>
+                                <th>관리번호</th>
+                                <th>성명</th>
+                                <th>오류 사유</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {validationResult.errors.map((err, idx) => (
+                                <tr key={idx}>
+                                  <td>{err.rowNumber}행</td>
+                                  <td>{err.managementNumber || '-'}</td>
+                                  <td>{err.name || '-'}</td>
+                                  <td className="reason">{err.reason}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
 
-          {/* 검증 진행 상태 */}
-          {isVerifying && (
-            <div style={{ textAlign: 'center', margin: '20px 0', color: 'var(--accent-cyan)' }}>
-              생성된 QR PNG 복호화 및 매니페스트 엑셀 대조 검증 작업 수행 중...
-            </div>
-          )}
+                    {/* 검증 성공 시 */}
+                    {validationResult && validationResult.isValid && (
+                      <div style={{ marginTop: '20px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                          <span className="badge badge-success">검증 성공</span>
+                          <span style={{ fontSize: '14px', fontWeight: 500 }}>
+                            총 {validationResult.attendees.length}명의 정상 참석자가 확인되었습니다.
+                          </span>
+                        </div>
 
-          {/* 검증 결과 리포트 */}
-          {verificationSummary && (
-            <div style={{ marginTop: '24px', textAlign: 'left', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                  {verificationSummary.failCount === 0 ? (
-                    <span className="badge badge-success">검증 완료 (100% 정상)</span>
-                  ) : (
-                    <span className="badge badge-error">검증 주의 ({verificationSummary.failCount}건 실패)</span>
-                  )}
-                  <h3 style={{ fontSize: '16px', fontWeight: 600, margin: 0, whiteSpace: 'nowrap' }}>
-                    QR 복호화 및 매니페스트 대조 검증 리포트
-                  </h3>
-                </div>
-                <span style={{ fontSize: '13px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                  성공: <strong style={{ color: 'var(--success-color)' }}>{verificationSummary.successCount}</strong> / 전체: {verificationSummary.total}건
-                </span>
-              </div>
+                        <div className="stat-grid">
+                          <div className="stat-item">
+                            <div className="stat-label">총 생성 대상자</div>
+                            <div className="stat-value">{validationResult.attendees.length} 명</div>
+                          </div>
+                          <div className="stat-item">
+                            <div className="stat-label">소속 이사회 수</div>
+                            <div className="stat-value">{getUniqueAffiliationCount(validationResult.attendees)} 개</div>
+                          </div>
+                        </div>
 
-              <div className="table-container">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>관리번호</th>
-                      <th>성명</th>
-                      <th>소속</th>
-                      <th>직함</th>
-                      <th>파일명</th>
-                      <th>상태</th>
-                      <th>복호화 평문 내용 (QR 스캔 원문)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {verificationSummary.items.map((item, idx) => (
-                      <tr key={idx}>
-                        <td style={{ fontWeight: 600 }}>{item.managementNumber}</td>
-                        <td>{item.name}</td>
-                        <td>{item.affiliation}</td>
-                        <td>{item.title}</td>
-                        <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{item.fileName}</td>
-                        <td>
-                          {item.status === 'success' ? (
-                            <span className="badge badge-success" style={{ padding: '2px 8px', fontSize: '11px' }}>
-                              성공
-                            </span>
-                          ) : (
-                            <span className="badge badge-error" style={{ padding: '2px 8px', fontSize: '11px' }}>
-                              실패
-                            </span>
-                          )}
-                        </td>
-                        <td className="allow-wrap" style={{ fontSize: '12px', fontFamily: 'monospace' }}>
-                          {item.status === 'success' && item.decryptedPayload ? (
-                            <span style={{ color: '#a5f3fc' }}>
-                              {`[${item.decryptedPayload.id}] ${item.decryptedPayload.n} / ${item.decryptedPayload.a} / ${item.decryptedPayload.t} (v${item.decryptedPayload.v})`}
-                            </span>
-                          ) : (
-                            <span style={{ color: 'var(--error-color)' }}>{item.failReason}</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </section>
-      )}
-    </>
-  )}
+                        {/* 저장 폴더 선택 */}
+                        <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
+                          <h3 style={{ fontSize: '14px', marginBottom: '12px', fontWeight: 600 }}>
+                            2. QR 이미지 및 매니페스트 저장 폴더 지정
+                          </h3>
+                          <div style={{ display: 'flex', gap: '12px' }}>
+                            <input
+                              type="text"
+                              readOnly
+                              value={outputDir || ''}
+                              placeholder="저장 폴더 경로를 선택하세요"
+                              style={{
+                                flex: 1,
+                                padding: '10px 14px',
+                                borderRadius: '8px',
+                                border: '1px solid var(--border-color)',
+                                background: 'rgba(15, 23, 42, 0.6)',
+                                color: 'var(--text-main)',
+                                fontSize: '13px',
+                              }}
+                            />
+                            <button className="btn btn-secondary" onClick={handleSelectOutputDir}>
+                              폴더 선택
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* 생성 시작 버튼 */}
+                        <div style={{ marginTop: '24px', textAlign: 'right' }}>
+                          <button
+                            className="btn btn-primary"
+                            style={{ padding: '12px 28px', fontSize: '15px' }}
+                            disabled={!outputDir}
+                            onClick={handleStartGenerate}
+                          >
+                            ⚡ 암호화 QR 코드 대량 생성 시작
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </section>
+                )}
+
+                {/* STEP 3: 진행 중 */}
+                {isGenerating && progress && (
+                  <section className="glass-card" style={{ textAlign: 'center', padding: '48px 24px' }}>
+                    <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '8px' }}>
+                      AES-256-GCM 암호화 QR 생성 진행 중...
+                    </h2>
+                    <p className="subtitle" style={{ marginBottom: '24px' }}>
+                      지정한 폴더에 이미지(PNG) 저장 및 매니페스트 레코드를 작성 중입니다.
+                    </p>
+
+                    <div className="progress-container">
+                      <div className="progress-track">
+                        <div
+                          className="progress-fill"
+                          style={{ width: `${Math.round((progress.current / progress.total) * 100)}%` }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--text-muted)' }}>
+                        <span>
+                          처리 중: {progress.managementNumber} - {progress.attendeeName}
+                        </span>
+                        <span style={{ fontWeight: 700, color: 'var(--accent-cyan)' }}>
+                          {progress.current} / {progress.total} ({Math.round((progress.current / progress.total) * 100)}%)
+                        </span>
+                      </div>
+                    </div>
+                  </section>
+                )}
+              </>
+            )}
 
       {/* 탭 2: 긴급 수동 입력 (1명 ~ N명 동적 입력 지원) */}
       {activeTab === 'single' && !completedResult && (
@@ -946,6 +946,8 @@ export function App() {
           </form>
         </section>
       )}
+          </>
+        )}
       </main>
 
       {/* 설정 팝업 모달 */}
