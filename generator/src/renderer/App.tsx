@@ -52,7 +52,7 @@ export function App() {
 
   // 개별 1줄 입력 탭 State
   const [activeTab, setActiveTab] = useState<'batch' | 'single'>('batch');
-  const [singleMgmtNo, setSingleMgmtNo] = useState<string>('90001');
+  const [singleMgmtNo, setSingleMgmtNo] = useState<string>('');
   const [singleName, setSingleName] = useState<string>('');
   const [singleAffiliation, setSingleAffiliation] = useState<string>('');
   const [singleTitle, setSingleTitle] = useState<string>('');
