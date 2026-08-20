@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+out/
+release/
+*.asar
+
+# Operating System
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# IDEs
+.vscode/
+.idea/
+
+# Binaries
+*.exe
+
+# Credentials & Secrets (Do not commit)
+*credentials*.json
+*secret*.json
+*token*.json
+google-*.json
+.env*

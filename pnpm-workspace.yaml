@@ -1,0 +1,7 @@
+packages:
+  - 'shared'
+  - 'generator'
+  - 'reader'
+allowBuilds:
+  electron: true
+  esbuild: true

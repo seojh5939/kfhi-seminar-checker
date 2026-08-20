@@ -1,0 +1,15 @@
+{
+  "appId": "com.kfhi.qr-reader",
+  "productName": "기아대책 QR 인식기",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*"
+  ],
+  "win": {
+    "target": [
+      "portable"
+    ]
+  }
+}

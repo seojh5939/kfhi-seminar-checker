@@ -1,0 +1,14 @@
+{
+  "appId": "com.kfhi.qr-generator",
+  "productName": "KFHI QR Generator",
+  "directories": {
+    "output": "dist/build"
+  },
+  "files": [
+    "dist/**/*",
+    "package.json"
+  ],
+  "win": {
+    "target": ["portable"]
+  }
+}
