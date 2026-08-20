@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import { CryptoEngine } from 'shared';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -10,7 +11,7 @@ function createWindow() {
     height: 750,
     minWidth: 850,
     minHeight: 600,
-    title: '기아대책 행사 QR 인식기 (Reader)',
+    title: '기아대책 행사 QR 인식기 (Reader v1.1)',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -45,8 +46,6 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
-
-import { CryptoEngine } from 'shared';
 
 ipcMain.handle('reader:decrypt-payload', async (_event, { cipherText, secretKey }: { cipherText: string; secretKey?: string }) => {
   try {
@@ -91,9 +90,9 @@ ipcMain.handle('reader:select-output-dir', async (_event, locationName?: string)
 
 ipcMain.handle('reader:export-csv', async (_event, { records, targetPath }: { records: any[]; targetPath: string }) => {
   try {
-    const header = '관리번호,성명,소속,직함,방문장소,방문시각,중복방문여부\n';
-    const rows = records.map((r) =>
-      `"${r.managementNumber}","${r.name}","${r.affiliation}","${r.title}","${r.location}","${r.scannedAt}","${r.isDuplicate ? '중복' : '정상'}"`
+    const header = '이사회명,직함,성명,티셔츠사이즈,방문장소,방문시각,중복방문여부\n';
+    const rows = (records || []).map((r) =>
+      `"${r.affiliation || ''}","${r.title || ''}","${r.name || ''}","${r.tshirtSize || ''}","${r.location || ''}","${r.scannedAt || ''}","${r.isDuplicate ? '중복' : '정상'}"`
     ).join('\n');
 
     // UTF-8 BOM (\uFEFF) 추가로 Excel 한글 깨짐 방지
@@ -115,9 +114,9 @@ ipcMain.handle('reader:export-desktop-backup', async (_event, { records, locatio
     const fileName = `방문기록_${safeLocName}_${timestamp}.csv`;
     const targetPath = path.join(desktopDir, fileName);
 
-    const header = '관리번호,성명,소속,직함,방문장소,방문시각,중복방문여부\n';
+    const header = '이사회명,직함,성명,티셔츠사이즈,방문장소,방문시각,중복방문여부\n';
     const rows = (records || []).map((r) =>
-      `"${r.managementNumber}","${r.name}","${r.affiliation}","${r.title}","${r.location}","${r.scannedAt}","${r.isDuplicate ? '중복' : '정상'}"`
+      `"${r.affiliation || ''}","${r.title || ''}","${r.name || ''}","${r.tshirtSize || ''}","${r.location || ''}","${r.scannedAt || ''}","${r.isDuplicate ? '중복' : '정상'}"`
     ).join('\n');
 
     const csvContent = '\uFEFF' + header + rows;

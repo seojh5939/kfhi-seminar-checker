@@ -280,16 +280,20 @@ export const Scanner: React.FC<ScannerProps> = ({
         }
       }
 
-      // 2. [중복 판정] 과거/당일 누적 기록(scanHistory) 중 동일 관리번호가 단 한 번이라도 존재하는지 체크
-      const alreadyRegistered = scanHistoryRef.current.some(
-        (r) => r.managementNumber === payload.id
-      );
+      // 2. [중복 판정] 과거/당일 누적 기록(scanHistory) 중 동일 참석자(이사회명+직함+성명 또는 관리번호) 체크
+      const alreadyRegistered = scanHistoryRef.current.some((r) => {
+        if (payload.id && r.managementNumber) {
+          return r.managementNumber === payload.id;
+        }
+        return r.affiliation === payload.a && r.name === payload.n && r.title === payload.t;
+      });
 
       const record: ScanRecord = {
-        managementNumber: payload.id,
         name: payload.n,
         affiliation: payload.a,
         title: payload.t,
+        tshirtSize: payload.s || '',
+        managementNumber: payload.id || '',
         location: locationName,
         scannedAt: formatKSTDateTime(),
         isDuplicate: alreadyRegistered,

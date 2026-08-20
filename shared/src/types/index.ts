@@ -3,25 +3,28 @@ import { ALLOWED_TITLES } from '../constants';
 export type TitleType = typeof ALLOWED_TITLES[number] | string;
 
 /**
- * 엑셀 명단 참석자 원본 인터페이스
+ * 엑셀 명단 참석자 원본 인터페이스 (v1.1)
  */
 export interface AttendeeInput {
-  managementNumber: string; // 5자리 관리번호 (예: "00001")
   name: string;             // 성명
-  affiliation: string;      // 소속 (공란 불가)
-  title: TitleType;         // 직함
+  affiliation: string;      // 소속/이사회명 (공란 불가)
+  title: TitleType;         // 직책/직함 (본인 직책 또는 "사모")
+  tshirtSize?: string;      // 티셔츠 사이즈 (예: "100", "XL", "L", "95" 등)
+  isSpouse?: boolean;       // 사모님 여부
+  managementNumber?: string;// 구버전 호환용 5자리 관리번호 (optional)
 }
 
 /**
- * QR코드 내부에 암호화되어 담기는 페이로드 포맷
+ * QR코드 내부에 담기는 페이로드 포맷 (v1 & v2 호환)
  */
 export interface QRPayload {
-  v: number;       // 규격 버전 (예: 1)
-  id: string;      // 관리번호 (5자리)
-  n: string;       // 성명
-  a: string;       // 소속
-  t: string;       // 직함
+  v: number;       // 규격 버전 (1 또는 2)
+  n: string;       // 성명 (name)
+  a: string;       // 소속/이사회명 (affiliation)
+  t: string;       // 직책/직함 (title)
+  s?: string;      // 티셔츠 사이즈 (t-shirt size)
   ts: number;      // 생성 시각 (Unix Epoch ms)
+  id?: string;     // v1 관리번호 (optional)
 }
 
 /**
@@ -29,25 +32,27 @@ export interface QRPayload {
  */
 export interface ScanRecord {
   id?: number;              // Auto Increment PK
-  managementNumber: string; // 관리번호
   name: string;             // 성명
-  affiliation: string;      // 소속
-  title: string;            // 직함
+  affiliation: string;      // 소속/이사회명
+  title: string;            // 직책/직함
+  tshirtSize?: string;      // 티셔츠 사이즈
   location: string;         // 방문 장소 (예: "메인홀 입구")
   scannedAt: string;        // 스캔 시각 (YYYY-MM-DD-HH:mm:ss)
   isDuplicate: boolean;     // 중복 스캔 여부
+  managementNumber?: string;// 하위 호환용
 }
 
 /**
- * 생성기 매니페스트 CSV 기록 인터페이스
+ * 생성기 매니페스트 (InDesign Data Merge) 기록 인터페이스
  */
 export interface ManifestRecord {
-  managementNumber: string;
-  name: string;
-  affiliation: string;
-  title: string;
-  fileName: string;         // 예: "00001.png"
+  affiliation: string;      // 이사회명
+  title: string;            // 직함
+  name: string;             // 성명
+  tshirtSize: string;       // 티셔츠사이즈
+  fileName: string;         // 예: "서울후원이사회_회장_홍길동.png"
   createdAt: string;        // 생성 시각 (YYYY-MM-DD-HH:mm:ss)
+  managementNumber?: string;// 하위 호환용
 }
 
 /**
@@ -55,7 +60,30 @@ export interface ManifestRecord {
  */
 export interface ValidationErrorItem {
   rowNumber: number;        // 엑셀 행 번호
-  managementNumber: string;
-  name: string;
-  reason: string;           // 사유 (예: "관리번호 중복", "소속 공란")
+  name?: string;
+  affiliation?: string;
+  reason: string;           // 사유 (예: "성명 누락", "소속 공란")
+  managementNumber?: string;
+}
+
+/**
+ * 엑셀 헤더와 표준 필드 간 매핑 정보
+ */
+export interface ColumnMapping {
+  affiliationCol: string;        // 이사회명/소속 매핑 헤더명
+  titleCol: string;              // 직책/직함 매핑 헤더명
+  nameCol: string;               // 본인 성명 매핑 헤더명
+  tshirtSizeCol?: string;        // 본인 티셔츠사이즈 매핑 헤더명
+  spouseNameCol?: string;        // 사모님 성함 매핑 헤더명
+  spouseTshirtSizeCol?: string;  // 사모님 티셔츠사이즈 매핑 헤더명
+  spouseAccompanyCol?: string;   // 사모님 동행여부 매핑 헤더명
+}
+
+/**
+ * 엑셀 파일 헤더 추출 및 샘플 데이터 구조
+ */
+export interface ExcelHeaderInfo {
+  headers: string[];             // 인식된 전체 헤더 목록
+  sampleRows: Record<string, string>[]; // 상위 3~5행 미리보기 샘플
+  suggestedMapping: ColumnMapping;      // 스마트 매칭 추천 매핑
 }

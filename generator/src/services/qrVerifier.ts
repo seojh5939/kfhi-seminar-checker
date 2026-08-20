@@ -6,14 +6,15 @@ import jsQR from 'jsqr';
 import { CryptoEngine, QRPayload } from 'shared';
 
 export interface VerificationItem {
-  managementNumber: string;
-  name: string;
   affiliation: string;
   title: string;
+  name: string;
+  tshirtSize?: string;
   fileName: string;
   status: 'success' | 'fail';
   decryptedPayload?: QRPayload;
   failReason?: string;
+  managementNumber?: string;
 }
 
 export interface VerificationSummary {
@@ -31,7 +32,7 @@ export class QRVerifier {
   }
 
   /**
-   * 생성 폴더 내의 manifest.csv 및 QR PNG 파일들을 일괄 복호화 검증
+   * 생성 폴더 내의 manifest.txt (또는 manifest.csv) 및 QR PNG 파일들을 일괄 복호화 검증
    */
   public async verifyOutputDir(outputDir: string, manifestPath?: string): Promise<VerificationSummary> {
     let targetManifest = manifestPath;
@@ -66,7 +67,6 @@ export class QRVerifier {
 
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i];
-      // Tab 탭 구분 또는 CSV 구분 파싱
       let cols: string[] = [];
       if (line.includes('\t')) {
         cols = line.split('\t').map((c) => c.trim().replace(/^"/, '').replace(/"$/, ''));
@@ -76,10 +76,35 @@ export class QRVerifier {
         ) || [];
       }
 
-      if (cols.length < 5) continue;
+      if (cols.length < 4) continue;
 
-      const [managementNumber, affiliation, title, name, rawFileName] = cols;
-      const fileName = path.basename(rawFileName); // 파일명만 추출
+      let affiliation = '';
+      let title = '';
+      let name = '';
+      let tshirtSize = '';
+      let rawFileName = '';
+
+      // v1.1 규격: 이사회명(0), 직함(1), 성명(2), 티셔츠사이즈(3), #QR코드(4)
+      if (cols.length >= 5 && cols[4].endsWith('.png')) {
+        affiliation = cols[0];
+        title = cols[1];
+        name = cols[2];
+        tshirtSize = cols[3];
+        rawFileName = cols[4];
+      } else if (cols.length >= 5 && cols[0].length === 5 && !isNaN(Number(cols[0]))) {
+        // 구버전 v1 호환: 관리번호(0), 이사회명(1), 직함(2), 성명(3), #QR코드(4)
+        affiliation = cols[1];
+        title = cols[2];
+        name = cols[3];
+        rawFileName = cols[4];
+      } else {
+        affiliation = cols[0] || '';
+        title = cols[1] || '';
+        name = cols[2] || '';
+        rawFileName = cols[cols.length - 1] || '';
+      }
+
+      const fileName = path.basename(rawFileName);
       const relativePath = rawFileName.replace(/\//g, path.sep);
       let pngPath = path.join(outputDir, relativePath);
       if (!fs.existsSync(pngPath)) {
@@ -89,10 +114,10 @@ export class QRVerifier {
       if (!fs.existsSync(pngPath)) {
         failCount++;
         items.push({
-          managementNumber,
-          name,
           affiliation,
           title,
+          name,
+          tshirtSize,
           fileName,
           status: 'fail',
           failReason: 'QR PNG 파일이 출력 폴더에 존재하지 않습니다.',
@@ -111,10 +136,10 @@ export class QRVerifier {
         if (!code || !code.data) {
           failCount++;
           items.push({
-            managementNumber,
-            name,
             affiliation,
             title,
+            name,
+            tshirtSize,
             fileName,
             status: 'fail',
             failReason: 'QR 코드 이미지 스캔/디코딩 실패 (이미지 손상)',
@@ -122,12 +147,11 @@ export class QRVerifier {
           continue;
         }
 
-        // AES-256-GCM 복호화
+        // 평문/암호문 자동 복호화
         const payload = this.cryptoEngine.decryptToPayload(code.data);
 
         // 매니페스트 레코드와 복호화 원문 대조
         const isMatch =
-          payload.id === managementNumber &&
           payload.n === name &&
           payload.a === affiliation &&
           payload.t === title;
@@ -135,10 +159,10 @@ export class QRVerifier {
         if (isMatch) {
           successCount++;
           items.push({
-            managementNumber,
-            name,
             affiliation,
             title,
+            name,
+            tshirtSize: payload.s || tshirtSize,
             fileName,
             status: 'success',
             decryptedPayload: payload,
@@ -146,10 +170,10 @@ export class QRVerifier {
         } else {
           failCount++;
           items.push({
-            managementNumber,
-            name,
             affiliation,
             title,
+            name,
+            tshirtSize,
             fileName,
             status: 'fail',
             decryptedPayload: payload,
@@ -159,13 +183,13 @@ export class QRVerifier {
       } catch (err: any) {
         failCount++;
         items.push({
-          managementNumber,
-          name,
           affiliation,
           title,
+          name,
+          tshirtSize,
           fileName,
           status: 'fail',
-          failReason: `복호화 실패: ${err.message || 'AES 위변조 검증 실패'}`,
+          failReason: `복호화 실패: ${err.message || 'QR 데이터 파싱 실패'}`,
         });
       }
     }

@@ -138,16 +138,17 @@ export const App: React.FC = () => {
       clearTimeout(popupTimerRef.current);
     }
 
+    const tshirtInfo = record.tshirtSize ? ` · 사이즈: ${record.tshirtSize}` : '';
     if (record.isDuplicate) {
       setCurrentResult({
         type: 'DUPLICATE',
-        message: `😊 또 오셨네요! 환영합니다! (이미 출입 완료 - ${record.name} ${record.title})`,
+        message: `😊 또 오셨네요! 환영합니다! (이미 출입 완료 - ${record.name} ${record.title}${tshirtInfo})`,
         record,
       });
     } else {
       setCurrentResult({
         type: 'SUCCESS',
-        message: `🎉 [입장 완료] ${record.name} (${record.affiliation} ${record.title}) 님 환영합니다!`,
+        message: `🎉 [입장 완료] ${record.name} (${record.affiliation} ${record.title}${tshirtInfo}) 님 환영합니다!`,
         record,
       });
     }
@@ -218,11 +219,11 @@ export const App: React.FC = () => {
         const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
         const fileName = `방문기록_${currentLoc}_${timestamp}.csv`;
 
-        const header = '관리번호,성명,소속,직함,방문장소,방문시각,중복방문여부\n';
+        const header = '이사회명,직함,성명,티셔츠사이즈,방문장소,방문시각,중복방문여부\n';
         const rows = scanHistory
           .map(
             (r) =>
-              `"${r.managementNumber}","${r.name}","${r.affiliation}","${r.title}","${r.location}","${r.scannedAt}","${r.isDuplicate ? '중복' : '정상'}"`
+              `"${r.affiliation || ''}","${r.title || ''}","${r.name || ''}","${r.tshirtSize || ''}","${r.location || ''}","${r.scannedAt || ''}","${r.isDuplicate ? '중복' : '정상'}"`
           )
           .join('\n');
         const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8;' });
@@ -468,10 +469,10 @@ export const App: React.FC = () => {
                     >
                       <div>
                         <div style={{ fontWeight: 'bold', fontSize: '15px' }}>
-                          {item.name} <span style={{ fontSize: '12px', color: '#94a3b8' }}>({item.affiliation} {item.title})</span>
+                          {item.name} <span style={{ fontSize: '12px', color: '#94a3b8' }}>({item.affiliation} {item.title}{item.tshirtSize ? ` · ${item.tshirtSize}` : ''})</span>
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                          관리번호: {item.managementNumber} | {item.scannedAt}
+                          {item.managementNumber ? `관리번호: ${item.managementNumber} | ` : ''}스캔시각: {item.scannedAt}
                         </div>
                       </div>
                       {item.isDuplicate && (
