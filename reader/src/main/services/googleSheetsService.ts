@@ -169,12 +169,14 @@ export class GoogleSheetsService {
 
       if (!batchRes.ok) {
         const errText = await batchRes.text();
+        console.error('Add sheet error:', errText);
         throw new Error(`장소 탭 [${locName}] 생성 실패: ${errText}`);
       }
 
-      // 2. 새 탭의 1행에 7개 표준 헤더 작성
-      const headerUrl = `https://sheets.googleapis.com/v4/spreadsheets/${rawId}/values/${encodeURIComponent(locName)}!A1:G1?valueInputOption=USER_ENTERED`;
-      await fetch(headerUrl, {
+      // 2. 새 탭의 1행에 7개 표준 헤더 작성 (Google Sheets REST range: '{sheetName}'!A1:G1 URL encoded)
+      const encodedRange = encodeURIComponent(`'${locName}'!A1:G1`);
+      const headerUrl = `https://sheets.googleapis.com/v4/spreadsheets/${rawId}/values/${encodedRange}?valueInputOption=USER_ENTERED`;
+      const headerRes = await fetch(headerUrl, {
         method: 'PUT',
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -184,6 +186,11 @@ export class GoogleSheetsService {
           values: [['이사회명', '직함', '성명', '티셔츠사이즈', '방문장소', '방문시각', '중복방문여부']],
         }),
       });
+
+      if (!headerRes.ok) {
+        const errText = await headerRes.text();
+        console.error('Header update error:', errText);
+      }
     }
   }
 
@@ -218,7 +225,9 @@ export class GoogleSheetsService {
       r.isDuplicate ? '중복' : '정상',
     ]);
 
-    const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${rawId}/values/${encodeURIComponent(locName)}!A:G:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+    // Google Sheets REST API values.append: POST .../values/{range}:append?valueInputOption=USER_ENTERED
+    const encodedRange = encodeURIComponent(`'${locName}'!A:G`);
+    const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${rawId}/values/${encodedRange}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
 
     const res = await fetch(appendUrl, {
       method: 'POST',
@@ -233,6 +242,7 @@ export class GoogleSheetsService {
 
     if (!res.ok) {
       const errText = await res.text();
+      console.error('Append rows error:', errText);
       throw new Error(`구글 시트 행 추가 실패 (${res.status}): ${errText}`);
     }
 

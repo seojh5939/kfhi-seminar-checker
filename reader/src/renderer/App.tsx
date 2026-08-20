@@ -96,6 +96,26 @@ export const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [lastSyncStatus, setLastSyncStatus] = useState<string>('');
 
+  // Ref를 활용한 클로저 안전 동기화 상태 관리
+  const syncQueueRef = useRef<ScanRecord[]>(syncQueue);
+  const googleSyncConfigRef = useRef<GoogleSyncConfig>(googleSyncConfig);
+  const locationNameRef = useRef<string>(locationName);
+  const isSyncingRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    syncQueueRef.current = syncQueue;
+    localStorage.setItem('kfhi_google_sync_queue', JSON.stringify(syncQueue));
+  }, [syncQueue]);
+
+  useEffect(() => {
+    googleSyncConfigRef.current = googleSyncConfig;
+    localStorage.setItem('kfhi_google_sync_config', JSON.stringify(googleSyncConfig));
+  }, [googleSyncConfig]);
+
+  useEffect(() => {
+    locationNameRef.current = locationName;
+  }, [locationName]);
+
   // 시트 설정 입력 상태
   const [inputSheetUrl, setInputSheetUrl] = useState<string>('');
   const [recentSheets, setRecentSheets] = useState<GoogleSpreadsheetItem[]>([]);
@@ -121,14 +141,6 @@ export const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('kfhi_scan_history', JSON.stringify(scanHistory));
   }, [scanHistory]);
-
-  useEffect(() => {
-    localStorage.setItem('kfhi_google_sync_config', JSON.stringify(googleSyncConfig));
-  }, [googleSyncConfig]);
-
-  useEffect(() => {
-    localStorage.setItem('kfhi_google_sync_queue', JSON.stringify(syncQueue));
-  }, [syncQueue]);
 
   // 최근 시트 목록 조회
   const loadRecentSheets = async () => {
@@ -195,12 +207,13 @@ export const App: React.FC = () => {
     setSheetActionMsg('시트 정보를 확인 중입니다...');
     try {
       const details = await window.electronAPI.googleGetSpreadsheetDetails(inputSheetUrl.trim());
-      setGoogleSyncConfig((prev) => ({
-        ...prev,
+      const newConfig: GoogleSyncConfig = {
         spreadsheetId: details.id,
         spreadsheetTitle: details.title,
         autoSyncEnabled: true,
-      }));
+      };
+      setGoogleSyncConfig(newConfig);
+      googleSyncConfigRef.current = newConfig;
       setInputSheetUrl('');
       setSheetActionMsg(`✅ [${details.title}] 시트가 성공적으로 연동되었습니다!`);
     } catch (e: any) {
@@ -210,12 +223,13 @@ export const App: React.FC = () => {
 
   // 최근 시트 드롭다운에서 선택하여 연동
   const handleSelectRecentSheet = (sheet: GoogleSpreadsheetItem) => {
-    setGoogleSyncConfig((prev) => ({
-      ...prev,
+    const newConfig: GoogleSyncConfig = {
       spreadsheetId: sheet.id,
       spreadsheetTitle: sheet.name,
       autoSyncEnabled: true,
-    }));
+    };
+    setGoogleSyncConfig(newConfig);
+    googleSyncConfigRef.current = newConfig;
     setSheetActionMsg(`✅ [${sheet.name}] 시트가 선택되었습니다.`);
   };
 
@@ -225,12 +239,13 @@ export const App: React.FC = () => {
     setSheetActionMsg('새 구글 스프레드시트를 생성하는 중입니다...');
     try {
       const newSheet = await window.electronAPI.googleCreateSpreadsheet();
-      setGoogleSyncConfig((prev) => ({
-        ...prev,
+      const newConfig: GoogleSyncConfig = {
         spreadsheetId: newSheet.id,
         spreadsheetTitle: newSheet.name,
         autoSyncEnabled: true,
-      }));
+      };
+      setGoogleSyncConfig(newConfig);
+      googleSyncConfigRef.current = newConfig;
       setSheetActionMsg(`🎉 새 시트 [${newSheet.name}] 가 생성 및 연동되었습니다!`);
       loadRecentSheets();
     } catch (e: any) {
@@ -241,11 +256,13 @@ export const App: React.FC = () => {
   // 연동 해제
   const handleDisconnectSheet = () => {
     if (confirm('현재 구글 스프레드시트 연동을 해제하시겠습니까?')) {
-      setGoogleSyncConfig((prev) => ({
-        ...prev,
+      const newConfig: GoogleSyncConfig = {
         spreadsheetId: '',
         spreadsheetTitle: '',
-      }));
+        autoSyncEnabled: false,
+      };
+      setGoogleSyncConfig(newConfig);
+      googleSyncConfigRef.current = newConfig;
       setSheetActionMsg('시트 연동이 해제되었습니다.');
     }
   };
@@ -259,17 +276,23 @@ export const App: React.FC = () => {
 
   // 백그라운드 동기화 실행 (Queue Worker)
   const processSyncQueue = useCallback(async () => {
-    if (isSyncing || syncQueue.length === 0) return;
-    if (!googleSyncConfig.autoSyncEnabled || !googleSyncConfig.spreadsheetId) return;
+    if (isSyncingRef.current) return;
+    const queue = syncQueueRef.current;
+    const config = googleSyncConfigRef.current;
+    const currentLoc = locationNameRef.current || '기본장소';
+
+    if (queue.length === 0) return;
+    if (!config.autoSyncEnabled || !config.spreadsheetId) return;
     if (!window.electronAPI?.googleSyncRecords) return;
 
+    isSyncingRef.current = true;
     setIsSyncing(true);
-    const batch = syncQueue.slice(0, 10); // 최대 10건씩 묶음 전송
-    const currentLoc = locationName || '기본장소';
+
+    const batch = queue.slice(0, 10); // 최대 10건씩 묶음 전송
 
     try {
       const res = await window.electronAPI.googleSyncRecords(
-        googleSyncConfig.spreadsheetId,
+        config.spreadsheetId,
         currentLoc,
         batch
       );
@@ -284,15 +307,16 @@ export const App: React.FC = () => {
     } catch (e: any) {
       setLastSyncStatus(`네트워크 대기: ${e.message}`);
     } finally {
+      isSyncingRef.current = false;
       setIsSyncing(false);
     }
-  }, [isSyncing, syncQueue, googleSyncConfig, locationName]);
+  }, []);
 
-  // 주기적 동기화 타이머 (4초 간격)
+  // 주기적 동기화 타이머 (3초 간격)
   useEffect(() => {
     const timer = setInterval(() => {
       processSyncQueue();
-    }, 4000);
+    }, 3000);
     return () => clearInterval(timer);
   }, [processSyncQueue]);
 
@@ -328,6 +352,7 @@ export const App: React.FC = () => {
     if (!inputLocation.trim()) return;
     const loc = inputLocation.trim();
     setLocationName(loc);
+    locationNameRef.current = loc;
     localStorage.setItem('kfhi_reader_location', loc);
     setIsLocationSet(true);
   };
@@ -373,8 +398,12 @@ export const App: React.FC = () => {
     setScanHistory((prev) => [record, ...prev]);
 
     // 2. 구글 시트 동기화 큐에 추가
-    if (googleSyncConfig.autoSyncEnabled && googleSyncConfig.spreadsheetId) {
+    if (googleSyncConfigRef.current.autoSyncEnabled && googleSyncConfigRef.current.spreadsheetId) {
       setSyncQueue((prev) => [...prev, record]);
+      // 즉시 동기화 시도 트리거
+      setTimeout(() => {
+        processSyncQueue();
+      }, 50);
     }
 
     if (popupTimerRef.current) {
