@@ -23,3 +23,10 @@ logs/
 
 # Binaries
 *.exe
+
+# Credentials & Secrets (Do not commit)
+*credentials*.json
+*secret*.json
+*token*.json
+google-*.json
+.env*

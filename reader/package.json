@@ -1,12 +1,12 @@
 {
   "name": "reader",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "기아대책 출입관리 QR 인식기",
   "author": "KFHI",
   "private": true,
   "main": "dist/main/index.js",
   "scripts": {
-    "build": "vite build --config vite.main.config.ts && vite build",
+    "build": "vite build --config vite.main.config.ts && vite build && node -e \"const fs=require('fs'); const src=fs.existsSync('../google-credentials.json')?'../google-credentials.json':(fs.existsSync('google-credentials.json')?'google-credentials.json':null); if(src){ if(!fs.existsSync('dist/main')) fs.mkdirSync('dist/main', {recursive:true}); fs.copyFileSync(src, 'dist/main/google-credentials.json'); fs.copyFileSync(src, 'dist/google-credentials.json'); console.log('Successfully bundled credentials to dist/'); }\"",
     "dev": "vite",
     "start": "electron .",
     "test": "jest",
