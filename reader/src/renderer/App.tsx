@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Scanner } from './components/Scanner';
-import { ScanRecord } from 'shared';
+import { ScanRecord, GoogleAuthStatus, GoogleSpreadsheetItem, GoogleSyncConfig } from 'shared';
 import appPackageJson from '../../package.json';
 import kfhiLogo from '../assets/kfhi-logo.png';
 
@@ -12,6 +12,17 @@ declare global {
       exportDesktopBackup: (records: any[], locationName: string) => Promise<{ success: boolean; filePath: string; fileName: string; count: number; error?: string }>;
       decryptPayload: (cipherText: string, secretKey?: string) => Promise<{ success: boolean; payload?: any; error?: string }>;
       openFolder: (folderPath: string) => Promise<void>;
+
+      // Google APIs
+      googleGetStatus: () => Promise<GoogleAuthStatus>;
+      googleSelectCredentialsFile: () => Promise<string | null>;
+      googleLogin: () => Promise<{ success: boolean; userEmail?: string; userName?: string; error?: string }>;
+      googleLogout: () => Promise<boolean>;
+      googleListRecentSheets: (limit?: number) => Promise<GoogleSpreadsheetItem[]>;
+      googleGetSpreadsheetDetails: (urlOrId: string) => Promise<{ id: string; title: string; sheetTitles: string[] }>;
+      googleCreateSpreadsheet: (title?: string) => Promise<GoogleSpreadsheetItem>;
+      googleSyncRecords: (spreadsheetId: string, locationName: string, records: any[]) => Promise<{ success: boolean; count: number; error?: string }>;
+      googleOpenSheetUrl: (url: string) => Promise<void>;
     };
   }
 }
@@ -58,6 +69,233 @@ export const App: React.FC = () => {
   });
   const [showBgModal, setShowBgModal] = useState<boolean>(false);
 
+  // ==========================================
+  // Google Sheets 실시간 연동 상태
+  // ==========================================
+  const [showGoogleModal, setShowGoogleModal] = useState<boolean>(false);
+  const [googleAuth, setGoogleAuth] = useState<GoogleAuthStatus>({
+    hasCredentialsFile: false,
+    isAuthenticated: false,
+  });
+  const [googleSyncConfig, setGoogleSyncConfig] = useState<GoogleSyncConfig>(() => {
+    const saved = localStorage.getItem('kfhi_google_sync_config');
+    return saved
+      ? JSON.parse(saved)
+      : {
+          spreadsheetId: '',
+          spreadsheetTitle: '',
+          autoSyncEnabled: true,
+        };
+  });
+
+  // 동기화 대기 큐 (Local-First Zero-Loss Queue)
+  const [syncQueue, setSyncQueue] = useState<ScanRecord[]>(() => {
+    const saved = localStorage.getItem('kfhi_google_sync_queue');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [lastSyncStatus, setLastSyncStatus] = useState<string>('');
+
+  // 시트 설정 입력 상태
+  const [inputSheetUrl, setInputSheetUrl] = useState<string>('');
+  const [recentSheets, setRecentSheets] = useState<GoogleSpreadsheetItem[]>([]);
+  const [isLoadingRecent, setIsLoadingRecent] = useState<boolean>(false);
+  const [sheetActionMsg, setSheetActionMsg] = useState<string>('');
+
+  // 구글 인증 상태 새로고침
+  const refreshGoogleAuthStatus = useCallback(async () => {
+    if (window.electronAPI?.googleGetStatus) {
+      try {
+        const status = await window.electronAPI.googleGetStatus();
+        setGoogleAuth(status);
+      } catch (e) {
+        console.error('Failed to get google status:', e);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshGoogleAuthStatus();
+  }, [refreshGoogleAuthStatus]);
+
+  useEffect(() => {
+    localStorage.setItem('kfhi_scan_history', JSON.stringify(scanHistory));
+  }, [scanHistory]);
+
+  useEffect(() => {
+    localStorage.setItem('kfhi_google_sync_config', JSON.stringify(googleSyncConfig));
+  }, [googleSyncConfig]);
+
+  useEffect(() => {
+    localStorage.setItem('kfhi_google_sync_queue', JSON.stringify(syncQueue));
+  }, [syncQueue]);
+
+  // 최근 시트 목록 조회
+  const loadRecentSheets = async () => {
+    if (!window.electronAPI?.googleListRecentSheets || !googleAuth.isAuthenticated) return;
+    setIsLoadingRecent(true);
+    setSheetActionMsg('');
+    try {
+      const sheets = await window.electronAPI.googleListRecentSheets(10);
+      setRecentSheets(sheets);
+    } catch (e: any) {
+      setSheetActionMsg(`시트 목록 조회 실패: ${e.message}`);
+    } finally {
+      setIsLoadingRecent(false);
+    }
+  };
+
+  // 구글 로그인 처리
+  const handleGoogleLogin = async () => {
+    if (!window.electronAPI?.googleLogin) return;
+    setSheetActionMsg('브라우저에서 로그인을 진행해주세요...');
+    try {
+      const res = await window.electronAPI.googleLogin();
+      if (res.success) {
+        await refreshGoogleAuthStatus();
+        setSheetActionMsg(`✅ ${res.userEmail || '계정'} 로그인 완료!`);
+        loadRecentSheets();
+      } else {
+        setSheetActionMsg(`❌ 로그인 실패: ${res.error}`);
+      }
+    } catch (e: any) {
+      setSheetActionMsg(`❌ 로그인 오류: ${e.message}`);
+    }
+  };
+
+  // 구글 로그아웃 처리
+  const handleGoogleLogout = async () => {
+    if (!window.electronAPI?.googleLogout) return;
+    if (confirm('구글 계정 연결을 해제하시겠습니까?')) {
+      await window.electronAPI.googleLogout();
+      await refreshGoogleAuthStatus();
+      setRecentSheets([]);
+      setSheetActionMsg('로그아웃되었습니다.');
+    }
+  };
+
+  // 키 파일 수동 선택
+  const handleSelectCredentialsFile = async () => {
+    if (!window.electronAPI?.googleSelectCredentialsFile) return;
+    const path = await window.electronAPI.googleSelectCredentialsFile();
+    if (path) {
+      alert(`키 파일이 설정되었습니다:\n${path}`);
+      await refreshGoogleAuthStatus();
+    }
+  };
+
+  // 구글 시트 URL/ID로 연동
+  const handleConnectSheetByUrl = async () => {
+    if (!inputSheetUrl.trim()) {
+      alert('구글 시트 URL 또는 ID를 입력해주세요.');
+      return;
+    }
+    if (!window.electronAPI?.googleGetSpreadsheetDetails) return;
+
+    setSheetActionMsg('시트 정보를 확인 중입니다...');
+    try {
+      const details = await window.electronAPI.googleGetSpreadsheetDetails(inputSheetUrl.trim());
+      setGoogleSyncConfig((prev) => ({
+        ...prev,
+        spreadsheetId: details.id,
+        spreadsheetTitle: details.title,
+        autoSyncEnabled: true,
+      }));
+      setInputSheetUrl('');
+      setSheetActionMsg(`✅ [${details.title}] 시트가 성공적으로 연동되었습니다!`);
+    } catch (e: any) {
+      setSheetActionMsg(`❌ 시트 연결 실패: ${e.message}`);
+    }
+  };
+
+  // 최근 시트 드롭다운에서 선택하여 연동
+  const handleSelectRecentSheet = (sheet: GoogleSpreadsheetItem) => {
+    setGoogleSyncConfig((prev) => ({
+      ...prev,
+      spreadsheetId: sheet.id,
+      spreadsheetTitle: sheet.name,
+      autoSyncEnabled: true,
+    }));
+    setSheetActionMsg(`✅ [${sheet.name}] 시트가 선택되었습니다.`);
+  };
+
+  // 새 시트 자동 생성
+  const handleCreateNewSpreadsheet = async () => {
+    if (!window.electronAPI?.googleCreateSpreadsheet) return;
+    setSheetActionMsg('새 구글 스프레드시트를 생성하는 중입니다...');
+    try {
+      const newSheet = await window.electronAPI.googleCreateSpreadsheet();
+      setGoogleSyncConfig((prev) => ({
+        ...prev,
+        spreadsheetId: newSheet.id,
+        spreadsheetTitle: newSheet.name,
+        autoSyncEnabled: true,
+      }));
+      setSheetActionMsg(`🎉 새 시트 [${newSheet.name}] 가 생성 및 연동되었습니다!`);
+      loadRecentSheets();
+    } catch (e: any) {
+      setSheetActionMsg(`❌ 새 시트 생성 실패: ${e.message}`);
+    }
+  };
+
+  // 연동 해제
+  const handleDisconnectSheet = () => {
+    if (confirm('현재 구글 스프레드시트 연동을 해제하시겠습니까?')) {
+      setGoogleSyncConfig((prev) => ({
+        ...prev,
+        spreadsheetId: '',
+        spreadsheetTitle: '',
+      }));
+      setSheetActionMsg('시트 연동이 해제되었습니다.');
+    }
+  };
+
+  // 브라우저에서 시트 열기
+  const handleOpenSheetInBrowser = () => {
+    if (!googleSyncConfig.spreadsheetId || !window.electronAPI?.googleOpenSheetUrl) return;
+    const url = `https://docs.google.com/spreadsheets/d/${googleSyncConfig.spreadsheetId}/edit`;
+    window.electronAPI.googleOpenSheetUrl(url);
+  };
+
+  // 백그라운드 동기화 실행 (Queue Worker)
+  const processSyncQueue = useCallback(async () => {
+    if (isSyncing || syncQueue.length === 0) return;
+    if (!googleSyncConfig.autoSyncEnabled || !googleSyncConfig.spreadsheetId) return;
+    if (!window.electronAPI?.googleSyncRecords) return;
+
+    setIsSyncing(true);
+    const batch = syncQueue.slice(0, 10); // 최대 10건씩 묶음 전송
+    const currentLoc = locationName || '기본장소';
+
+    try {
+      const res = await window.electronAPI.googleSyncRecords(
+        googleSyncConfig.spreadsheetId,
+        currentLoc,
+        batch
+      );
+
+      if (res.success) {
+        // 성공한 항목만 큐에서 제거
+        setSyncQueue((prev) => prev.slice(batch.length));
+        setLastSyncStatus(`정상 동기화됨 (${new Date().toLocaleTimeString()})`);
+      } else {
+        setLastSyncStatus(`동기화 실패: ${res.error}`);
+      }
+    } catch (e: any) {
+      setLastSyncStatus(`네트워크 대기: ${e.message}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [isSyncing, syncQueue, googleSyncConfig, locationName]);
+
+  // 주기적 동기화 타이머 (4초 간격)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      processSyncQueue();
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [processSyncQueue]);
+
   const handleBgImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -85,10 +323,6 @@ export const App: React.FC = () => {
     record?: ScanRecord;
   } | null>(null);
 
-  useEffect(() => {
-    localStorage.setItem('kfhi_scan_history', JSON.stringify(scanHistory));
-  }, [scanHistory]);
-
   const handleLocationSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputLocation.trim()) return;
@@ -98,13 +332,12 @@ export const App: React.FC = () => {
     setIsLocationSet(true);
   };
 
-  // 장소 변경 처리 (1차 팝업 ➡️ 바탕화면에 자동 저장 ➡️ 저장위치 팝업 ➡️ 장소입력창 이동)
+  // 장소 변경 처리
   const handleLocationResetWithBackup = async () => {
     if (!confirm('장소 변경을 진행하시겠습니까?')) {
       return;
     }
 
-    // 바탕화면에 방문기록_장소명_년월일시분초.csv 자동 저장
     if (window.electronAPI?.exportDesktopBackup) {
       const res = await window.electronAPI.exportDesktopBackup(scanHistory, locationName);
       if (res.success) {
@@ -112,14 +345,8 @@ export const App: React.FC = () => {
       } else {
         alert(`바탕화면 자동 저장 중 오류가 발생했습니다: ${res.error}`);
       }
-    } else {
-      // 웹 테스트 fallback
-      const now = new Date();
-      const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
-      alert(`[테스트] 방문 기록이 바탕화면에 저장되었습니다. (저장 파일명: 방문기록_${locationName || '기본장소'}_${timestamp}.csv)`);
     }
 
-    // 장소 변경 시 이전 장소의 출입기록 삭제 및 로컬 스토리지 초기화
     setScanHistory([]);
     localStorage.removeItem('kfhi_scan_history');
     localStorage.removeItem('kfhi_reader_location');
@@ -128,7 +355,7 @@ export const App: React.FC = () => {
     setIsLocationSet(false);
   };
 
-  // QR 인증 내역 초기화 처리 (1차 경고 팝업 ➡️ 2차 2026-NDS 비밀번호 검증 ➡️ 초기화)
+  // QR 인증 내역 초기화 처리
   const handleResetHistoryClick = () => {
     if (!confirm('정말 초기화하시겠습니까? 그동안의 인증기록이 모두 사라집니다.')) {
       return;
@@ -142,9 +369,14 @@ export const App: React.FC = () => {
   const popupTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleScanSuccess = (record: ScanRecord) => {
+    // 1. 로컬 상태 및 스토리지 즉시 추가 (0ms 지연)
     setScanHistory((prev) => [record, ...prev]);
 
-    // 기존 팝업 타이머가 있으면 즉시 취소하고 새 팝업으로 3초 갱신
+    // 2. 구글 시트 동기화 큐에 추가
+    if (googleSyncConfig.autoSyncEnabled && googleSyncConfig.spreadsheetId) {
+      setSyncQueue((prev) => [...prev, record]);
+    }
+
     if (popupTimerRef.current) {
       clearTimeout(popupTimerRef.current);
     }
@@ -164,7 +396,6 @@ export const App: React.FC = () => {
       });
     }
 
-    // 새로운 QR이 인식되면 그 시점부터 설정된 노출 시간(초) 동안 팝업 띄우기
     popupTimerRef.current = setTimeout(() => {
       setCurrentResult(null);
     }, popupDuration * 1000);
@@ -206,13 +437,13 @@ export const App: React.FC = () => {
     setShowPasswordModal(false);
 
     if (authPurpose === 'RESET') {
-      // 1. QR 인증내역 초기화 실행
       setScanHistory([]);
       localStorage.removeItem('kfhi_scan_history');
+      setSyncQueue([]);
+      localStorage.removeItem('kfhi_google_sync_queue');
       setShowSettingsModal(false);
       alert('인증 내역이 성공적으로 초기화되었습니다.');
     } else {
-      // 2. CSV 내보내기 다운로드 실행
       const currentLoc = locationName || localStorage.getItem('kfhi_reader_location') || '장소미지정';
       if (window.electronAPI) {
         const filePath = await window.electronAPI.selectOutputDir(currentLoc);
@@ -224,27 +455,6 @@ export const App: React.FC = () => {
             alert(`CSV 내보내기 실패: ${result.error}`);
           }
         }
-      } else {
-        // 웹 브라우저 테스트 fallback
-        const now = new Date();
-        const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
-        const fileName = `방문기록_${currentLoc}_${timestamp}.csv`;
-
-        const header = '이사회명,직함,성명,티셔츠사이즈,방문장소,방문시각,중복방문여부\n';
-        const rows = scanHistory
-          .map(
-            (r) =>
-              `"${r.affiliation || ''}","${r.title || ''}","${r.name || ''}","${r.tshirtSize || ''}","${r.location || ''}","${r.scannedAt || ''}","${r.isDuplicate ? '중복' : '정상'}"`
-          )
-          .join('\n');
-        const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', fileName);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
       }
     }
   };
@@ -263,7 +473,7 @@ export const App: React.FC = () => {
         zIndex: 1,
       }}
     >
-      {/* 1920x1080 고정 배경 레이어 (상단 Bar 가림 방지를 위해 Y 80px 기준점 적용, 하단까지 100% 핏) */}
+      {/* 1920x1080 고정 배경 레이어 */}
       {customBg && (
         <div
           style={{
@@ -298,7 +508,7 @@ export const App: React.FC = () => {
           marginTop: 0,
           marginBottom: '24px',
           padding: '16px 0',
-          backgroundColor: 'rgba(15, 23, 42, 0.88)',
+          backgroundColor: 'rgba(15, 23, 42, 0.92)',
           backdropFilter: 'blur(12px)',
           borderRadius: 0,
           borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
@@ -308,7 +518,7 @@ export const App: React.FC = () => {
       >
         <div
           style={{
-            maxWidth: '1280px',
+            maxWidth: '1360px',
             width: '100%',
             margin: '0 auto',
             padding: '0 24px',
@@ -333,8 +543,48 @@ export const App: React.FC = () => {
               </p>
             </div>
           </div>
-          {isLocationSet && (
-            <div style={{ display: 'flex', gap: '8px' }}>
+
+          {/* 구글 시트 연동 상태 인디케이터 배지 & 설정 버튼 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button
+              onClick={() => setShowGoogleModal(true)}
+              style={{
+                backgroundColor: googleSyncConfig.spreadsheetId ? 'rgba(16, 185, 129, 0.15)' : '#334155',
+                color: googleSyncConfig.spreadsheetId ? '#34d399' : '#cbd5e1',
+                border: googleSyncConfig.spreadsheetId ? '1px solid #10b981' : '1px solid #475569',
+                padding: '8px 14px',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+              }}
+              title="구글 스프레드시트 실시간 연동 설정 열기"
+            >
+              <span>📊 구글 시트:</span>
+              {googleSyncConfig.spreadsheetId ? (
+                <>
+                  <span style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {googleSyncConfig.spreadsheetTitle}
+                  </span>
+                  <span style={{ fontSize: '12px', color: '#a7f3d0' }}>({locationName || '탭'} 탭)</span>
+                  {syncQueue.length > 0 ? (
+                    <span style={{ backgroundColor: '#eab308', color: '#000', padding: '1px 6px', borderRadius: '10px', fontSize: '11px' }}>
+                      {syncQueue.length}건 대기
+                    </span>
+                  ) : (
+                    <span style={{ color: '#10b981' }}>● 실시간</span>
+                  )}
+                </>
+              ) : (
+                <span style={{ color: '#94a3b8' }}>미연동 (로컬 단독)</span>
+              )}
+            </button>
+
+            {isLocationSet && (
               <button
                 onClick={() => setShowSettingsModal(true)}
                 style={{
@@ -342,7 +592,7 @@ export const App: React.FC = () => {
                   color: '#f8fafc',
                   border: '1px solid #475569',
                   padding: '8px 16px',
-                  borderRadius: '6px',
+                  borderRadius: '8px',
                   fontWeight: 'bold',
                   cursor: 'pointer',
                   display: 'flex',
@@ -353,153 +603,534 @@ export const App: React.FC = () => {
               >
                 ⚙️ 설정
               </button>
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/* 메인 컨텐츠 영역 (좌우 24px 패딩 적용) */}
-      <main style={{ padding: '0 24px 24px 24px' }}>
-      {!isLocationSet ? (
-        <div style={{ maxWidth: '400px', margin: '60px auto', backgroundColor: '#1e293b', padding: '32px', borderRadius: '12px', textAlign: 'center' }}>
-          <h2 style={{ fontSize: '18px', marginBottom: '16px', color: '#f8fafc' }}>스캔 장소 등록</h2>
-          <form onSubmit={handleLocationSubmit}>
-            <input
-              type="text"
-              placeholder="예: 메인홀 입구, 부스 A"
-              value={inputLocation}
-              onChange={(e) => setInputLocation(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '12px',
-                borderRadius: '6px',
-                border: '1px solid #475569',
-                backgroundColor: '#0f172a',
-                color: 'white',
-                marginBottom: '16px',
-                boxSizing: 'border-box',
-              }}
-            />
-            <button
-              type="submit"
-              style={{
-                width: '100%',
-                padding: '12px',
-                borderRadius: '6px',
-                border: 'none',
-                backgroundColor: '#0284c7',
-                color: 'white',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-              }}
-            >
-              스캔 시작하기
-            </button>
-          </form>
-        </div>
-      ) : (
-        <div style={{ maxWidth: '640px', margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          {/* QR 스캔 영역 (가운데 정렬 + Glassmorphism 패널 가독성 적용) */}
-          <div
-            style={{
-              width: '100%',
-              backgroundColor: 'rgba(30, 41, 59, 0.88)',
-              backdropFilter: 'blur(12px)',
-              padding: '24px',
-              borderRadius: '16px',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
-              boxSizing: 'border-box',
-              marginBottom: '20px',
-              textAlign: 'center',
-            }}
-          >
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#38bdf8', textAlign: 'center', fontWeight: 'bold' }}>
-              명찰의 QR코드를 카메라에 보여주세요
-            </h3>
-            <Scanner
-              locationName={locationName}
-              scanHistory={scanHistory}
-              onScanSuccess={handleScanSuccess}
-              onScanError={handleScanError}
-            />
-          </div>
-
-          {/* 최근 스캔기록 하단 배치 + Toggle 버튼 */}
-          <div
-            style={{
-              width: '100%',
-              backgroundColor: 'rgba(30, 41, 59, 0.88)',
-              backdropFilter: 'blur(12px)',
-              borderRadius: '12px',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
-              overflow: 'hidden',
-            }}
-          >
-            <button
-              onClick={() => setShowHistoryToggle((prev) => !prev)}
-              style={{
-                width: '100%',
-                padding: '14px 20px',
-                backgroundColor: '#334155',
-                color: '#f8fafc',
-                border: 'none',
-                fontSize: '15px',
-                fontWeight: 'bold',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                cursor: 'pointer',
-              }}
-            >
-              <span>📋 최근 스캔 기록 (실제 참석: {uniqueAttendeeCount} 명 / 총 {scanHistory.length} 건)</span>
-              <span>{showHistoryToggle ? '▲ 접기' : '▼ 펼치기'}</span>
-            </button>
-
-            {showHistoryToggle && (
-              <div style={{ padding: '16px', maxHeight: '300px', overflowY: 'auto' }}>
-                {scanHistory.length === 0 ? (
-                  <div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>
-                    스캔된 기록이 아직 없습니다.
-                  </div>
-                ) : (
-                  scanHistory.map((item, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        padding: '12px',
-                        backgroundColor: '#0f172a',
-                        borderRadius: '8px',
-                        marginBottom: '8px',
-                        borderLeft: item.isDuplicate ? '4px solid #eab308' : '4px solid #10b981',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontWeight: 'bold', fontSize: '15px' }}>
-                          {item.name} <span style={{ fontSize: '12px', color: '#94a3b8' }}>({item.affiliation} {item.title}{item.tshirtSize ? ` · ${item.tshirtSize}` : ''})</span>
-                        </div>
-                        <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                          {item.managementNumber ? `관리번호: ${item.managementNumber} | ` : ''}스캔시각: {item.scannedAt}
-                        </div>
-                      </div>
-                      {item.isDuplicate && (
-                        <span style={{ backgroundColor: '#854d0e', color: '#fef08a', fontSize: '11px', padding: '2px 6px', borderRadius: '4px' }}>
-                          중복
-                        </span>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
             )}
           </div>
         </div>
-      )}
+      </header>
+
+      {/* 메인 컨텐츠 영역 */}
+      <main style={{ padding: '0 24px 24px 24px' }}>
+        {!isLocationSet ? (
+          <div style={{ maxWidth: '420px', margin: '60px auto', backgroundColor: '#1e293b', padding: '32px', borderRadius: '16px', textAlign: 'center', border: '1px solid #334155' }}>
+            <h2 style={{ fontSize: '18px', marginBottom: '16px', color: '#f8fafc' }}>📍 스캔 장소 등록</h2>
+            <form onSubmit={handleLocationSubmit}>
+              <input
+                type="text"
+                placeholder="예: 입구, 행복한나눔, 로비"
+                value={inputLocation}
+                onChange={(e) => setInputLocation(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: '1px solid #475569',
+                  backgroundColor: '#0f172a',
+                  color: 'white',
+                  marginBottom: '16px',
+                  boxSizing: 'border-box',
+                }}
+              />
+              <button
+                type="submit"
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  backgroundColor: '#0284c7',
+                  color: 'white',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  fontSize: '15px',
+                }}
+              >
+                스캔 시작하기
+              </button>
+            </form>
+          </div>
+        ) : (
+          <div style={{ maxWidth: '680px', margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            {/* QR 스캔 영역 */}
+            <div
+              style={{
+                width: '100%',
+                backgroundColor: 'rgba(30, 41, 59, 0.88)',
+                backdropFilter: 'blur(12px)',
+                padding: '24px',
+                borderRadius: '16px',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+                boxSizing: 'border-box',
+                marginBottom: '20px',
+                textAlign: 'center',
+              }}
+            >
+              <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#38bdf8', textAlign: 'center', fontWeight: 'bold' }}>
+                명찰의 QR코드를 카메라에 보여주세요
+              </h3>
+              <Scanner
+                locationName={locationName}
+                scanHistory={scanHistory}
+                onScanSuccess={handleScanSuccess}
+                onScanError={handleScanError}
+              />
+            </div>
+
+            {/* 최근 스캔기록 */}
+            <div
+              style={{
+                width: '100%',
+                backgroundColor: 'rgba(30, 41, 59, 0.88)',
+                backdropFilter: 'blur(12px)',
+                borderRadius: '12px',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+                overflow: 'hidden',
+              }}
+            >
+              <button
+                onClick={() => setShowHistoryToggle((prev) => !prev)}
+                style={{
+                  width: '100%',
+                  padding: '14px 20px',
+                  backgroundColor: '#334155',
+                  color: '#f8fafc',
+                  border: 'none',
+                  fontSize: '15px',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                }}
+              >
+                <span>📋 최근 스캔 기록 (실제 참석: {uniqueAttendeeCount} 명 / 총 {scanHistory.length} 건)</span>
+                <span>{showHistoryToggle ? '▲ 접기' : '▼ 펼치기'}</span>
+              </button>
+
+              {showHistoryToggle && (
+                <div style={{ padding: '16px', maxHeight: '300px', overflowY: 'auto' }}>
+                  {scanHistory.length === 0 ? (
+                    <div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>
+                      스캔된 기록이 아직 없습니다.
+                    </div>
+                  ) : (
+                    scanHistory.map((item, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '12px',
+                          backgroundColor: '#0f172a',
+                          borderRadius: '8px',
+                          marginBottom: '8px',
+                          borderLeft: item.isDuplicate ? '4px solid #eab308' : '4px solid #10b981',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 'bold', fontSize: '15px' }}>
+                            {item.name} <span style={{ fontSize: '12px', color: '#94a3b8' }}>({item.affiliation} {item.title}{item.tshirtSize ? ` · ${item.tshirtSize}` : ''})</span>
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                            {item.managementNumber ? `관리번호: ${item.managementNumber} | ` : ''}스캔시각: {item.scannedAt}
+                          </div>
+                        </div>
+                        {item.isDuplicate && (
+                          <span style={{ backgroundColor: '#854d0e', color: '#fef08a', fontSize: '11px', padding: '2px 6px', borderRadius: '4px' }}>
+                            중복
+                          </span>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </main>
+
+      {/* ======================================================== */}
+      {/* 📊 구글 스프레드시트 실시간 연동 관리 모달 */}
+      {/* ======================================================== */}
+      {showGoogleModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.82)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10005,
+            padding: '24px',
+            backdropFilter: 'blur(6px)',
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#1e293b',
+              padding: '32px',
+              borderRadius: '20px',
+              width: '100%',
+              maxWidth: '640px',
+              border: '1px solid #475569',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              color: '#f8fafc',
+            }}
+          >
+            {/* 상단 모달 헤더 */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '14px', borderBottom: '1px solid #334155' }}>
+              <h2 style={{ margin: 0, fontSize: '20px', color: '#38bdf8', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                📊 구글 스프레드시트 실시간 연동
+              </h2>
+              <button
+                onClick={() => setShowGoogleModal(false)}
+                style={{
+                  backgroundColor: '#334155',
+                  color: '#f8fafc',
+                  border: 'none',
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                }}
+              >
+                ✖ 닫기
+              </button>
+            </div>
+
+            {/* 안내 메시지 */}
+            {sheetActionMsg && (
+              <div
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  backgroundColor: sheetActionMsg.startsWith('❌') ? 'rgba(239, 68, 68, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+                  border: sheetActionMsg.startsWith('❌') ? '1px solid #ef4444' : '1px solid #38bdf8',
+                  color: sheetActionMsg.startsWith('❌') ? '#fca5a5' : '#7dd3fc',
+                  fontSize: '13px',
+                  marginBottom: '16px',
+                  lineHeight: 1.4,
+                }}
+              >
+                {sheetActionMsg}
+              </div>
+            )}
+
+            {/* 1. 구글 계정 인증 섹션 */}
+            <div style={{ backgroundColor: '#0f172a', padding: '18px', borderRadius: '12px', marginBottom: '16px', border: '1px solid #334155' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#38bdf8' }}>1. 조직 계정 로그인</span>
+                <span style={{ fontSize: '12px', color: googleAuth.isAuthenticated ? '#34d399' : '#94a3b8' }}>
+                  {googleAuth.isAuthenticated ? '🟢 로그인 완료' : '⚪ 미인증 상태'}
+                </span>
+              </div>
+
+              {!googleAuth.isAuthenticated ? (
+                <div>
+                  <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#94a3b8', lineHeight: 1.4 }}>
+                    회사 구글 계정으로 로그인하여 스프레드시트 쓰기 권한을 승인합니다.
+                  </p>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      onClick={handleGoogleLogin}
+                      style={{
+                        padding: '10px 18px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: '#0284c7',
+                        color: 'white',
+                        fontWeight: 'bold',
+                        fontSize: '14px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      🔑 구글 계정 로그인 (브라우저 열림)
+                    </button>
+                    {!googleAuth.hasCredentialsFile && (
+                      <button
+                        onClick={handleSelectCredentialsFile}
+                        style={{
+                          padding: '10px 14px',
+                          borderRadius: '8px',
+                          border: '1px solid #475569',
+                          backgroundColor: '#1e293b',
+                          color: '#cbd5e1',
+                          fontSize: '13px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        📁 키 파일(JSON) 직접 선택
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#f8fafc' }}>
+                      {googleAuth.userEmail || '조직 구글 계정'}
+                    </div>
+                    {googleAuth.userName && (
+                      <div style={{ fontSize: '12px', color: '#94a3b8' }}>{googleAuth.userName}</div>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleGoogleLogout}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      border: '1px solid #991b1b',
+                      backgroundColor: 'rgba(220, 38, 38, 0.15)',
+                      color: '#fca5a5',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    로그아웃
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 2. 연동 스프레드시트 지정 섹션 */}
+            {googleAuth.isAuthenticated && (
+              <div style={{ backgroundColor: '#0f172a', padding: '18px', borderRadius: '12px', marginBottom: '16px', border: '1px solid #334155' }}>
+                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#38bdf8', marginBottom: '12px' }}>
+                  2. 연동할 스프레드시트 지정
+                </div>
+
+                {/* 현재 연동된 시트 표시 */}
+                {googleSyncConfig.spreadsheetId ? (
+                  <div style={{ padding: '14px', borderRadius: '10px', backgroundColor: 'rgba(16, 185, 129, 0.12)', border: '1px solid #10b981', marginBottom: '16px' }}>
+                    <div style={{ fontSize: '12px', color: '#34d399', fontWeight: 'bold', marginBottom: '4px' }}>
+                      ✅ 현재 연동 중인 스프레드시트
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#ffffff' }}>
+                      {googleSyncConfig.spreadsheetTitle}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#a7f3d0', marginTop: '4px' }}>
+                      기록 장소 탭: <b>[{locationName || '기본장소'}]</b> 탭에 실시간 기록됨
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                      <button
+                        onClick={handleOpenSheetInBrowser}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: 'none',
+                          backgroundColor: '#10b981',
+                          color: '#064e3b',
+                          fontWeight: 'bold',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        🌐 웹에서 시트 열기
+                      </button>
+                      <button
+                        onClick={handleDisconnectSheet}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: '1px solid #475569',
+                          backgroundColor: '#1e293b',
+                          color: '#f87171',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        연동 해제
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* 방식 1: 시트 링크(URL) 직접 붙여넣기 */}
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#cbd5e1', marginBottom: '6px' }}>
+                    🔗 방법 1: 구글 시트 URL 링크 붙여넣기 (가장 확실함)
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="text"
+                      placeholder="https://docs.google.com/spreadsheets/d/... 주소 붙여넣기"
+                      value={inputSheetUrl}
+                      onChange={(e) => setInputSheetUrl(e.target.value)}
+                      style={{
+                        flex: 1,
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid #475569',
+                        backgroundColor: '#1e293b',
+                        color: 'white',
+                        fontSize: '13px',
+                      }}
+                    />
+                    <button
+                      onClick={handleConnectSheetByUrl}
+                      style={{
+                        padding: '10px 16px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        backgroundColor: '#0284c7',
+                        color: 'white',
+                        fontWeight: 'bold',
+                        fontSize: '13px',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      연동하기
+                    </button>
+                  </div>
+                </div>
+
+                {/* 방법 2 & 3 */}
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '12px', borderTop: '1px solid #1e293b', paddingTop: '14px' }}>
+                  <button
+                    onClick={loadRecentSheets}
+                    disabled={isLoadingRecent}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: '8px',
+                      border: '1px solid #475569',
+                      backgroundColor: '#1e293b',
+                      color: '#cbd5e1',
+                      fontSize: '13px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {isLoadingRecent ? '조회 중...' : '📋 최근 시트 10개 불러오기'}
+                  </button>
+
+                  <button
+                    onClick={handleCreateNewSpreadsheet}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      backgroundColor: '#059669',
+                      color: 'white',
+                      fontSize: '13px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ➕ 새 출입기록 시트 생성
+                  </button>
+                </div>
+
+                {/* 최근 시트 목록 표시 */}
+                {recentSheets.length > 0 && (
+                  <div style={{ marginTop: '14px', maxHeight: '180px', overflowY: 'auto', backgroundColor: '#1e293b', borderRadius: '8px', padding: '8px' }}>
+                    <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '6px', padding: '0 4px' }}>
+                      최근 수정된 상위 10개 시트 (클릭하여 연동):
+                    </div>
+                    {recentSheets.map((s) => (
+                      <div
+                        key={s.id}
+                        onClick={() => handleSelectRecentSheet(s)}
+                        style={{
+                          padding: '8px 10px',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          backgroundColor: googleSyncConfig.spreadsheetId === s.id ? '#0284c7' : 'transparent',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          marginBottom: '4px',
+                        }}
+                      >
+                        <span style={{ fontSize: '13px', fontWeight: 'bold' }}>{s.name}</span>
+                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                          {s.modifiedTime ? new Date(s.modifiedTime).toLocaleDateString() : ''}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 3. 실시간 동기화 상태 및 수동 전송 */}
+            {googleSyncConfig.spreadsheetId && (
+              <div style={{ backgroundColor: '#0f172a', padding: '18px', borderRadius: '12px', border: '1px solid #334155' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#38bdf8' }}>3. 실시간 동기화 상태</span>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px' }}>
+                    <input
+                      type="checkbox"
+                      checked={googleSyncConfig.autoSyncEnabled}
+                      onChange={(e) =>
+                        setGoogleSyncConfig((prev) => ({ ...prev, autoSyncEnabled: e.target.checked }))
+                      }
+                    />
+                    자동 동기화 켜짐
+                  </label>
+                </div>
+
+                <div style={{ fontSize: '13px', color: '#94a3b8', lineHeight: 1.5 }}>
+                  - 대기 중인 전송 건수: <b style={{ color: syncQueue.length > 0 ? '#fde047' : '#34d399' }}>{syncQueue.length} 건</b><br />
+                  {lastSyncStatus && <span>- 상태: {lastSyncStatus}</span>}
+                </div>
+
+                {syncQueue.length > 0 && (
+                  <button
+                    onClick={processSyncQueue}
+                    disabled={isSyncing}
+                    style={{
+                      marginTop: '10px',
+                      padding: '8px 14px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      backgroundColor: '#3b82f6',
+                      color: 'white',
+                      fontSize: '13px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {isSyncing ? '전송 중...' : '지금 즉시 전송'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div style={{ marginTop: '24px', textAlign: 'right' }}>
+              <button
+                onClick={() => setShowGoogleModal(false)}
+                style={{
+                  padding: '10px 24px',
+                  backgroundColor: '#0284c7',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontWeight: 'bold',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                }}
+              >
+                확인 및 닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 설정 팝업 모달 */}
       {showSettingsModal && (
@@ -531,7 +1162,6 @@ export const App: React.FC = () => {
               position: 'relative',
             }}
           >
-            {/* 좌상단 뒤로가기 버튼 */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', paddingBottom: '12px', borderBottom: '1px solid #334155' }}>
               <button
                 onClick={() => setShowSettingsModal(false)}
@@ -552,8 +1182,34 @@ export const App: React.FC = () => {
               <div style={{ width: '80px' }} />
             </div>
 
-            {/* 설정 메뉴 버튼 4종 및 팝업 시간 설정 */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* 구글 스프레드시트 실시간 연동 버튼 */}
+              <button
+                onClick={() => {
+                  setShowSettingsModal(false);
+                  setShowGoogleModal(true);
+                }}
+                style={{
+                  padding: '16px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  backgroundColor: '#0284c7',
+                  color: 'white',
+                  fontWeight: 'bold',
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <span>📊 구글 스프레드시트 실시간 연동</span>
+                <span style={{ fontSize: '13px', opacity: 0.9 }}>
+                  {googleSyncConfig.spreadsheetId ? '🟢 연동됨' : '설정하기'}
+                </span>
+              </button>
+
               {/* ⏱️ QR 스캔 성공 팝업 노출 시간 조절 */}
               <div
                 style={{
@@ -685,7 +1341,6 @@ export const App: React.FC = () => {
               </button>
             </div>
 
-            {/* 설정 모달 최하단 버전 명시 (package.json 연동) */}
             <div
               style={{
                 marginTop: '24px',
@@ -802,7 +1457,7 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* 대형 전면 팝업 모달 (화면 중앙 정렬, 큼직한 글씨) */}
+      {/* 대형 전면 팝업 모달 */}
       {currentResult && (
         <div
           style={{
@@ -855,7 +1510,7 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* 인식기 전용 배경화면 설정 & 1920x1080 상세 픽셀 가이드 모달 */}
+      {/* 인식기 전용 배경화면 설정 모달 */}
       {showBgModal && (
         <div
           style={{
@@ -917,7 +1572,6 @@ export const App: React.FC = () => {
               </button>
             </div>
 
-            {/* 배경 이미지 선택 섹션 */}
             <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '12px', marginBottom: '24px', border: '1px solid #334155' }}>
               <label style={{ display: 'block', fontSize: '15px', fontWeight: 700, marginBottom: '8px', color: '#38bdf8' }}>
                 1. 배경화면 이미지 업로드 (PNG / JPG, 1920×1080 권장)
@@ -959,59 +1613,13 @@ export const App: React.FC = () => {
               )}
             </div>
 
-            {/* 1920x1080 배경 디자인 가이드 섹션 */}
             <div style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '12px', border: '1px solid #334155' }}>
-              <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', color: '#38bdf8', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', color: '#38bdf8', fontWeight: 'bold' }}>
                 📐 1920×1080 인식기 전용 배경 디자인 픽셀 가이드
               </h3>
               <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#94a3b8', lineHeight: 1.5 }}>
-                QR 인식기 화면 중앙에는 웹캠 스캔 뷰어가 위치합니다. 행사명, 후원사 로고, 메인 비주얼 등은 아래 좌표 기준 <strong>좌측/우측 사이드 영역</strong>에배치하여 가려지지 않도록 구성해 주세요.
+                QR 인식기 화면 중앙에는 웹캠 스캔 뷰어가 위치합니다. 행사명, 후원사 로고, 메인 비주얼 등은 좌측/우측 사이드 영역에 배치해 주세요.
               </p>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px', marginBottom: '16px' }}>
-                <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
-                  <div style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '13px' }}>🎯 1. 캔버스 기준 규격</div>
-                  <div style={{ color: '#f8fafc', fontWeight: 'bold', marginTop: '2px' }}>1920 × 1080 px (16:9)</div>
-                  <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>풀HD 표준 모니터 지원</div>
-                </div>
-
-                <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
-                  <div style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '13px' }}>🏷️ 2. 상단 헤더 바 영역</div>
-                  <div style={{ color: '#f8fafc', fontWeight: 'bold', marginTop: '2px' }}>Y: 0 ~ 90 px</div>
-                  <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>로고, 장소, 카메라스위치, 설정</div>
-                </div>
-
-                <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
-                  <div style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '13px' }}>📷 3. 중앙 웹캠 스캔 뷰</div>
-                  <div style={{ color: '#f8fafc', fontWeight: 'bold', marginTop: '2px' }}>640 × 480 px (중앙)</div>
-                  <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>X: 640~1280px / Y: 180~660px</div>
-                </div>
-
-                <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
-                  <div style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '13px' }}>🔍 4. 스캔 초점 타겟 (ROI)</div>
-                  <div style={{ color: '#f8fafc', fontWeight: 'bold', marginTop: '2px' }}>250 × 250 px (중앙)</div>
-                  <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>X: 835~1085px / Y: 295~545px</div>
-                </div>
-
-                <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
-                  <div style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '13px' }}>🎉 5. 입장 완료 팝업 모달</div>
-                  <div style={{ color: '#f8fafc', fontWeight: 'bold', marginTop: '2px' }}>650 × 300 px (중앙 팝업)</div>
-                  <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>X: 635~1285px / Y: 390~690px</div>
-                </div>
-
-                <div style={{ backgroundColor: '#1e293b', padding: '12px', borderRadius: '8px', border: '1px solid #334155' }}>
-                  <div style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '13px' }}>📊 6. 하단 컨트롤/기록바</div>
-                  <div style={{ color: '#f8fafc', fontWeight: 'bold', marginTop: '2px' }}>Y: 900 ~ 1080 px</div>
-                  <div style={{ color: '#64748b', fontSize: '11px', marginTop: '2px' }}>카메라 드롭다운, 스캔 기록</div>
-                </div>
-              </div>
-
-              <div style={{ backgroundColor: 'rgba(56, 189, 248, 0.12)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(56, 189, 248, 0.3)', color: '#7dd3fc', fontSize: '12px', lineHeight: 1.5 }}>
-                💡 <strong>디자이너 꿀팁 (안전 지대):</strong><br />
-                - <strong>좌측 사이드 안전 영역</strong>: `X: 50 ~ 550px`, `Y: 120 ~ 850px`<br />
-                - <strong>우측 사이드 안전 영역</strong>: `X: 1370 ~ 1870px`, `Y: 120 ~ 850px`<br />
-                위 영역에 브랜드 디자인, 텍스트 타이틀, 스폰서 로고를 배치하시면 카메라 및 스캔 팝업에 전혀 방해받지 않습니다.
-              </div>
             </div>
 
             <div style={{ marginTop: '24px', textAlign: 'right' }}>

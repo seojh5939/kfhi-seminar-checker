@@ -87,3 +87,33 @@ export interface ExcelHeaderInfo {
   sampleRows: Record<string, string>[]; // 상위 3~5행 미리보기 샘플
   suggestedMapping: ColumnMapping;      // 스마트 매칭 추천 매핑
 }
+
+/**
+ * 구글 계정 인증 및 키 파일 상태
+ */
+export interface GoogleAuthStatus {
+  hasCredentialsFile: boolean;   // google-credentials.json 존재 여부
+  credentialsPath?: string;      // 감지된 파일 경로
+  isAuthenticated: boolean;      // 로그인 완료 여부
+  userEmail?: string;            // 로그인된 구글 계정 이메일
+  userName?: string;             // 구글 프로필 성명
+}
+
+/**
+ * 구글 스프레드시트 요약 정보
+ */
+export interface GoogleSpreadsheetItem {
+  id: string;                    // 스프레드시트 고유 ID
+  name: string;                  // 파일명
+  modifiedTime?: string;         // 최근 수정 시각
+  webViewLink?: string;          // 웹 브라우저 열기 링크
+}
+
+/**
+ * 구글 시트 실시간 동기화 설정
+ */
+export interface GoogleSyncConfig {
+  spreadsheetId: string;         // 대상 스프레드시트 ID
+  spreadsheetTitle: string;      // 대상 스프레드시트 제목
+  autoSyncEnabled: boolean;      // 실시간 자동 동기화 켜짐 여부
+}
