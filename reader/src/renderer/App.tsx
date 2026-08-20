@@ -109,6 +109,7 @@ export const App: React.FC = () => {
   const syncDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const backoffUntilRef = useRef<number>(0);
   const retryCountRef = useRef<number>(0);
+  const lastRequestTimeRef = useRef<number>(0); // 단일 기기 최소 요청 간격(1.5초) 보장용 타임스탬프
 
   useEffect(() => {
     syncQueueRef.current = syncQueue;
@@ -313,6 +314,11 @@ export const App: React.FC = () => {
       return;
     }
 
+    // 단일 기기 최소 요청 간격(1.5초) 강제 보장 -> 단일 기기당 분당 최대 40회(안전구역)로 물리적 락다운
+    if (now - lastRequestTimeRef.current < 1500) {
+      return;
+    }
+
     const queue = syncQueueRef.current;
     const config = googleSyncConfigRef.current;
     const currentLoc = locationNameRef.current || '기본장소';
@@ -321,6 +327,7 @@ export const App: React.FC = () => {
     if (!config.autoSyncEnabled || !config.spreadsheetId) return;
     if (!window.electronAPI?.googleSyncRecords) return;
 
+    lastRequestTimeRef.current = Date.now();
     isSyncingRef.current = true;
     setIsSyncing(true);
 
