@@ -3,7 +3,7 @@ import { DEFAULT_AES_SECRET_KEY, QR_PAYLOAD_VERSION } from '../constants';
 import { QRPayload, AttendeeInput } from '../types';
 
 /**
- * AES-256-GCM 암복호화 전담 엔진 (SOLID: Single Responsibility)
+ * AES-256-GCM 암복호화 및 평문 하이브리드 인코딩/디코딩 전담 엔진
  */
 export class CryptoEngine {
   private readonly secretKey: Buffer;
@@ -12,56 +12,36 @@ export class CryptoEngine {
 
   constructor(secretKey: string = DEFAULT_AES_SECRET_KEY) {
     // 입력 비밀키를 256비트(32바이트) 해시 값으로 정규화
-    this.secretKey = crypto.createHash('sha256').update(secretKey).digest();
+    this.secretKey = crypto.createHash('sha256').update(secretKey || DEFAULT_AES_SECRET_KEY).digest();
   }
 
   /**
-   * 참석자 정보(AttendeeInput)를 JSON QRPayload 규격으로 구성 후 AES-256-GCM 암호화 (기존 포맷)
+   * 참석자 정보를 평문 구분자 포맷 문자열로 변환 (v2 규격)
+   * 포맷: v2|이사회명|직책|성명|티셔츠사이즈|생성시각
    */
-  public encryptAttendee(attendee: AttendeeInput): string {
-    const payload: QRPayload = {
-      v: QR_PAYLOAD_VERSION,
-      id: attendee.managementNumber,
-      n: attendee.name,
-      a: attendee.affiliation,
-      t: attendee.title,
-      ts: Date.now(),
-    };
-    return this.encryptString(JSON.stringify(payload));
+  public toPlainPayloadString(attendee: AttendeeInput): string {
+    const ts = Date.now();
+    const tshirt = attendee.tshirtSize || '';
+    return `v2|${attendee.affiliation}|${attendee.title}|${attendee.name}|${tshirt}|${ts}`;
   }
 
   /**
-   * 참석자 정보(AttendeeInput)를 구분자 콤팩트 규격으로 변환 후 Base64URL 이진 바이너리 AES-256-GCM 암호화
-   * @returns 50~70자 내외의 경량 Base64URL 암호문
+   * 참석자 정보를 QR 문자열로 인코딩 (옵션에 따라 평문 또는 Base64URL 콤팩트 암호화)
+   */
+  public encodeAttendee(attendee: AttendeeInput, encrypted: boolean = false): string {
+    const plainText = this.toPlainPayloadString(attendee);
+    if (encrypted) {
+      return this.encryptCompactString(plainText);
+    }
+    return plainText;
+  }
+
+  /**
+   * 참석자 정보를 구분자 콤팩트 규격으로 변환 후 Base64URL 이진 바이너리 AES-256-GCM 암호화
    */
   public encryptAttendeeCompact(attendee: AttendeeInput): string {
-    const payload: QRPayload = {
-      v: QR_PAYLOAD_VERSION,
-      id: attendee.managementNumber,
-      n: attendee.name,
-      a: attendee.affiliation,
-      t: attendee.title,
-      ts: Date.now(),
-    };
-    const compactText = `${payload.v}|${payload.id}|${payload.n}|${payload.a}|${payload.t}|${payload.ts}`;
-    return this.encryptCompactString(compactText);
-  }
-
-  /**
-   * 평문 문자열을 AES-256-GCM으로 암호화
-   * @returns "IV(hex):AuthTag(hex):EncryptedData(hex)" 형태의 포맷 문자열
-   */
-  public encryptString(plainText: string): string {
-    const iv = crypto.randomBytes(this.IV_LENGTH);
-    const cipher = crypto.createCipheriv(this.ALGORITHM, this.secretKey, iv);
-
-    const encrypted = Buffer.concat([
-      cipher.update(plainText, 'utf8'),
-      cipher.final(),
-    ]);
-    const authTag = cipher.getAuthTag();
-
-    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+    const plainText = this.toPlainPayloadString(attendee);
+    return this.encryptCompactString(plainText);
   }
 
   /**
@@ -83,38 +63,127 @@ export class CryptoEngine {
   }
 
   /**
-   * 암호문 문자열을 복호화하여 QRPayload 검증 객체로 반환 (기존 Hex 및 콤팩트 Base64URL 모두 자동 감지 지원)
-   * @throws 위변조, 복호화 실패, 페이로드 누락 시 Error 발생
+   * 평문 문자열을 Hex 구분자 형태로 암호화 (하위 호환용)
    */
-  public decryptToPayload(cipherText: string): QRPayload {
-    const decryptedStr = this.decryptString(cipherText);
+  public encryptString(plainText: string): string {
+    const iv = crypto.randomBytes(this.IV_LENGTH);
+    const cipher = crypto.createCipheriv(this.ALGORITHM, this.secretKey, iv);
 
-    // 1. JSON 포맷 시도
-    if (decryptedStr.startsWith('{')) {
-      const payload = JSON.parse(decryptedStr) as QRPayload;
-      if (!payload.id || !payload.n || typeof payload.v !== 'number') {
-        throw new Error('유효하지 않은 QR 페이로드 포맷입니다.');
-      }
-      return payload;
-    }
+    const encrypted = Buffer.concat([
+      cipher.update(plainText, 'utf8'),
+      cipher.final(),
+    ]);
+    const authTag = cipher.getAuthTag();
 
-    // 2. 콤팩트 구분자 포맷 시도 (v|id|n|a|t|ts)
-    const parts = decryptedStr.split('|');
-    if (parts.length >= 6) {
-      const [vStr, id, n, a, t, tsStr] = parts;
-      const v = Number(vStr);
-      const ts = Number(tsStr);
-      if (!id || !n || isNaN(v)) {
-        throw new Error('유효하지 않은 콤팩트 QR 페이로드 포맷입니다.');
-      }
-      return { v, id, n, a, t, ts };
-    }
-
-    throw new Error('인식할 수 없는 페이로드 포맷입니다.');
+    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
   }
 
   /**
-   * AES-256-GCM 암호문 복호화 (기존 Hex 구분자 포맷 및 콤팩트 Base64URL 바이너리 포맷 자동 호환)
+   * 문자열을 분석하여 QRPayload 객체로 복원 (평문 / 콤팩트 암호문 / Hex 암호문 / JSON 자동 감지)
+   */
+  public decryptToPayload(input: string): QRPayload {
+    if (!input || typeof input !== 'string') {
+      throw new Error('QR 데이터가 비어있습니다.');
+    }
+
+    const trimmed = input.trim();
+
+    // 1. 평문 v2 구분자 포맷 직접 파싱 (v2|affiliation|title|name|tshirt|ts)
+    if (trimmed.startsWith('v2|') || trimmed.startsWith('2|')) {
+      return this.parseV2Plain(trimmed);
+    }
+
+    // 2. 평문 v1 구분자 포맷 직접 파싱 (v1|id|name|affiliation|title|ts)
+    if (trimmed.startsWith('v1|') || trimmed.startsWith('1|')) {
+      return this.parseV1Plain(trimmed);
+    }
+
+    // 3. 평문 JSON 포맷 직접 파싱
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try {
+        const payload = JSON.parse(trimmed) as QRPayload;
+        if (payload.n && payload.a) return payload;
+      } catch {
+        // 복호화 시도로 이동
+      }
+    }
+
+    // 4. 암호문 복호화 수행 (Base64URL 또는 Hex 구분자)
+    const decryptedStr = this.decryptString(trimmed);
+
+    // 복호화된 문자열 재파싱
+    if (decryptedStr.startsWith('v2|') || decryptedStr.startsWith('2|')) {
+      return this.parseV2Plain(decryptedStr);
+    }
+
+    if (decryptedStr.startsWith('v1|') || decryptedStr.startsWith('1|')) {
+      return this.parseV1Plain(decryptedStr);
+    }
+
+    if (decryptedStr.startsWith('{')) {
+      const payload = JSON.parse(decryptedStr) as QRPayload;
+      if (payload.n) return payload;
+    }
+
+    // 구분자 포맷 fallback 파싱
+    if (decryptedStr.includes('|')) {
+      const parts = decryptedStr.split('|');
+      if (parts.length >= 5) {
+        return {
+          v: 2,
+          a: parts[1] || '',
+          t: parts[2] || '',
+          n: parts[3] || '',
+          s: parts[4] || '',
+          ts: Number(parts[5]) || Date.now(),
+        };
+      }
+    }
+
+    throw new Error('유효하지 않은 QR 페이로드 포맷입니다.');
+  }
+
+  /**
+   * v2 평문 파싱: v2|affiliation|title|name|tshirt|ts
+   */
+  private parseV2Plain(str: string): QRPayload {
+    const parts = str.split('|');
+    if (parts.length < 4) {
+      throw new Error('v2 QR 데이터 필드가 부족합니다.');
+    }
+    const [vStr, a, t, n, s, tsStr] = parts;
+    const v = Number(vStr.replace(/^v/, '')) || 2;
+    const ts = Number(tsStr) || Date.now();
+    return {
+      v,
+      a: a || '',
+      t: t || '',
+      n: n || '',
+      s: s || '',
+      ts,
+    };
+  }
+
+  /**
+   * v1 평문 파싱: v1|id|name|affiliation|title|ts
+   */
+  private parseV1Plain(str: string): QRPayload {
+    const parts = str.split('|');
+    const [vStr, id, n, a, t, tsStr] = parts;
+    const v = Number(vStr.replace(/^v/, '')) || 1;
+    const ts = Number(tsStr) || Date.now();
+    return {
+      v,
+      id: id || '',
+      n: n || '',
+      a: a || '',
+      t: t || '',
+      ts,
+    };
+  }
+
+  /**
+   * AES-256-GCM 암호문 복호화 (Hex 구분자 포맷 및 콤팩트 Base64URL 바이너리 포맷 지원)
    */
   public decryptString(cipherText: string): string {
     // A. 기존 Hex 구분자 포맷 (IV:Tag:Encrypted)

@@ -42,6 +42,17 @@ export const App: React.FC = () => {
   // 유니크 참석 인원 카운트 (중복 스캔 제외)
   const uniqueAttendeeCount = scanHistory.filter((r) => !r.isDuplicate).length;
 
+  // QR 스캔 성공 팝업 노출 시간 설정 (초 단위, 기본 3초)
+  const [popupDuration, setPopupDuration] = useState<number>(() => {
+    const saved = localStorage.getItem('kfhi_reader_popup_duration');
+    return saved ? Math.max(1, Math.min(30, Number(saved))) : 3;
+  });
+
+  const handlePopupDurationChange = (seconds: number) => {
+    setPopupDuration(seconds);
+    localStorage.setItem('kfhi_reader_popup_duration', String(seconds));
+  };
+
   const [customBg, setCustomBg] = useState<string>(() => {
     return localStorage.getItem('kfhi_reader_bg') || '';
   });
@@ -138,24 +149,25 @@ export const App: React.FC = () => {
       clearTimeout(popupTimerRef.current);
     }
 
+    const tshirtInfo = record.tshirtSize ? ` · 사이즈: ${record.tshirtSize}` : '';
     if (record.isDuplicate) {
       setCurrentResult({
         type: 'DUPLICATE',
-        message: `😊 또 오셨네요! 환영합니다! (이미 출입 완료 - ${record.name} ${record.title})`,
+        message: `😊 또 오셨네요! 환영합니다! (이미 출입 완료 - ${record.name} ${record.title}${tshirtInfo})`,
         record,
       });
     } else {
       setCurrentResult({
         type: 'SUCCESS',
-        message: `🎉 [입장 완료] ${record.name} (${record.affiliation} ${record.title}) 님 환영합니다!`,
+        message: `🎉 [입장 완료] ${record.name} (${record.affiliation} ${record.title}${tshirtInfo}) 님 환영합니다!`,
         record,
       });
     }
 
-    // 새로운 QR이 인식되면 그 시점부터 3초 동안 팝업 띄우기
+    // 새로운 QR이 인식되면 그 시점부터 설정된 노출 시간(초) 동안 팝업 띄우기
     popupTimerRef.current = setTimeout(() => {
       setCurrentResult(null);
-    }, 3000);
+    }, popupDuration * 1000);
   };
 
   const handleScanError = (msg: string) => {
@@ -170,7 +182,7 @@ export const App: React.FC = () => {
 
     popupTimerRef.current = setTimeout(() => {
       setCurrentResult(null);
-    }, 3000);
+    }, popupDuration * 1000);
   };
 
   const handleExportCsvClick = () => {
@@ -218,11 +230,11 @@ export const App: React.FC = () => {
         const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
         const fileName = `방문기록_${currentLoc}_${timestamp}.csv`;
 
-        const header = '관리번호,성명,소속,직함,방문장소,방문시각,중복방문여부\n';
+        const header = '이사회명,직함,성명,티셔츠사이즈,방문장소,방문시각,중복방문여부\n';
         const rows = scanHistory
           .map(
             (r) =>
-              `"${r.managementNumber}","${r.name}","${r.affiliation}","${r.title}","${r.location}","${r.scannedAt}","${r.isDuplicate ? '중복' : '정상'}"`
+              `"${r.affiliation || ''}","${r.title || ''}","${r.name || ''}","${r.tshirtSize || ''}","${r.location || ''}","${r.scannedAt || ''}","${r.isDuplicate ? '중복' : '정상'}"`
           )
           .join('\n');
         const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8;' });
@@ -468,10 +480,10 @@ export const App: React.FC = () => {
                     >
                       <div>
                         <div style={{ fontWeight: 'bold', fontSize: '15px' }}>
-                          {item.name} <span style={{ fontSize: '12px', color: '#94a3b8' }}>({item.affiliation} {item.title})</span>
+                          {item.name} <span style={{ fontSize: '12px', color: '#94a3b8' }}>({item.affiliation} {item.title}{item.tshirtSize ? ` · ${item.tshirtSize}` : ''})</span>
                         </div>
                         <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                          관리번호: {item.managementNumber} | {item.scannedAt}
+                          {item.managementNumber ? `관리번호: ${item.managementNumber} | ` : ''}스캔시각: {item.scannedAt}
                         </div>
                       </div>
                       {item.isDuplicate && (
@@ -540,8 +552,54 @@ export const App: React.FC = () => {
               <div style={{ width: '80px' }} />
             </div>
 
-            {/* 설정 메뉴 버튼 4종 */}
+            {/* 설정 메뉴 버튼 4종 및 팝업 시간 설정 */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* ⏱️ QR 스캔 성공 팝업 노출 시간 조절 */}
+              <div
+                style={{
+                  padding: '14px 16px',
+                  borderRadius: '10px',
+                  backgroundColor: '#0f172a',
+                  border: '1px solid #334155',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '12px',
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#38bdf8' }}>
+                    ⏱️ 스캔 팝업 노출 시간
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                    QR 스캔 성공 시 화면에 유지되는 시간
+                  </div>
+                </div>
+                <select
+                  value={popupDuration}
+                  onChange={(e) => handlePopupDurationChange(Number(e.target.value))}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    backgroundColor: '#1e293b',
+                    color: '#f8fafc',
+                    border: '1px solid #475569',
+                    fontSize: '13px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    outline: 'none',
+                  }}
+                >
+                  <option value={1}>1초</option>
+                  <option value={2}>2초</option>
+                  <option value={3}>3초 (기본)</option>
+                  <option value={4}>4초</option>
+                  <option value={5}>5초</option>
+                  <option value={7}>7초</option>
+                  <option value={10}>10초</option>
+                </select>
+              </div>
+
               <button
                 onClick={() => setShowBgModal(true)}
                 style={{

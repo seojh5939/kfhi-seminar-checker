@@ -12,13 +12,13 @@ export class ManifestExporter {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    // Adobe InDesign 탭 구분 TXT 데이터 병합 헤더 (고정 규격: 관리번호, 이사회명, 직함, 성명, #QR코드)
-    const headers = ['관리번호', '이사회명', '직함', '성명', '#QR코드'];
+    // Adobe InDesign 탭 구분 TXT 데이터 병합 헤더 (규격: 이사회명, 직함, 성명, 티셔츠사이즈, #QR코드)
+    const headers = ['이사회명', '직함', '성명', '티셔츠사이즈', '#QR코드'];
     const rows = records.map((rec) => [
-      rec.managementNumber,
       rec.affiliation,
       rec.title,
       rec.name,
+      rec.tshirtSize || '',
       rec.fileName,
     ]);
 

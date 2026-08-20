@@ -6,16 +6,17 @@ import { ExcelValidator } from '../services/excelValidator';
 import { QRGeneratorEngine } from '../services/qrGenerator';
 import { ManifestExporter } from '../services/manifestExporter';
 import { QRVerifier } from '../services/qrVerifier';
+import { ColumnMapping, AttendeeInput } from 'shared';
 
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1000,
-    height: 720,
-    minWidth: 800,
-    minHeight: 600,
-    title: '기아대책 행사 QR코드 대량 생성기',
+    width: 1100,
+    height: 780,
+    minWidth: 850,
+    minHeight: 620,
+    title: '기아대책 행사 QR코드 대량 생성기 (v1.1)',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -79,9 +80,49 @@ ipcMain.handle('generator:select-output-dir', async () => {
   return result.filePaths[0];
 });
 
+// 엑셀 헤더 및 샘플 행 추출 핸들러 (v1.1)
+ipcMain.handle('generator:get-excel-headers', async (_event, filePath: string) => {
+  try {
+    const headerInfo = await ExcelParser.getHeadersAndSamples(filePath);
+    return { success: true, headerInfo };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: `엑셀 헤더 분석 오류: ${error.message || '파일 형식이 올바르지 않습니다.'}`,
+    };
+  }
+});
+
+// 컬럼 매핑 기반 엑셀 데이터 파싱 및 유효성 검증 핸들러 (v1.1)
+ipcMain.handle(
+  'generator:parse-excel-with-mapping',
+  async (_event, { filePath, mapping }: { filePath: string; mapping: ColumnMapping }) => {
+    try {
+      const rawRows = await ExcelParser.parseWithMapping(filePath, mapping);
+      const validationResult = ExcelValidator.validate(rawRows);
+      return validationResult;
+    } catch (error: any) {
+      return {
+        isValid: false,
+        attendees: [],
+        errors: [
+          {
+            rowNumber: 0,
+            name: '-',
+            affiliation: '-',
+            reason: `엑셀 파일 읽기 오류: ${error.message || '데이터 추출에 실패했습니다.'}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// 기본 엑셀 검증 핸들러 (하위 호환)
 ipcMain.handle('generator:validate-excel', async (_event, filePath: string) => {
   try {
-    const rawRows = await ExcelParser.parseExcelFile(filePath);
+    const headerInfo = await ExcelParser.getHeadersAndSamples(filePath);
+    const rawRows = await ExcelParser.parseWithMapping(filePath, headerInfo.suggestedMapping);
     const validationResult = ExcelValidator.validate(rawRows);
     return validationResult;
   } catch (error: any) {
@@ -91,8 +132,8 @@ ipcMain.handle('generator:validate-excel', async (_event, filePath: string) => {
       errors: [
         {
           rowNumber: 0,
-          managementNumber: '-',
           name: '-',
+          affiliation: '-',
           reason: `엑셀 파일 읽기 오류: ${error.message || '파일 형식이 올바르지 않습니다.'}`,
         },
       ],
@@ -100,21 +141,31 @@ ipcMain.handle('generator:validate-excel', async (_event, filePath: string) => {
   }
 });
 
+// QR 코드 대량 생성 핸들러 (v1.1: 평문/암호화 옵션 지원)
 ipcMain.handle(
   'generator:generate-qr',
-  async (_event, { attendees, outputDir }: { attendees: any[]; outputDir: string }) => {
+  async (
+    _event,
+    {
+      attendees,
+      outputDir,
+      encrypted = false,
+    }: { attendees: AttendeeInput[]; outputDir: string; encrypted?: boolean }
+  ) => {
     try {
       const engine = new QRGeneratorEngine();
       const manifestRecords = await engine.generateBulk(
         attendees,
         outputDir,
+        encrypted,
         (current, total, currentAttendee) => {
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('generator:progress', {
               current,
               total,
               attendeeName: currentAttendee.name,
-              managementNumber: currentAttendee.managementNumber,
+              affiliation: currentAttendee.affiliation,
+              title: currentAttendee.title,
             });
           }
         }
