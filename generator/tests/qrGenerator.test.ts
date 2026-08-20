@@ -105,10 +105,10 @@ describe('QRGeneratorEngine 대량 생성 및 이미지 디코딩 무결성 유�
     expect(buffer[0]).toBe(0xff);
     expect(buffer[1]).toBe(0xfe);
 
-    // Adobe InDesign 데이터 병합 호환 탭 구분 헤더 [이사회명, 직함, 성명, 티셔츠사이즈, #QR코드] 검증
+    // Adobe InDesign 데이터 병합 호환 탭 구분 헤더 [이사회명, 직함, 성명, #QR코드] 검증
     const txtString = buffer.toString('utf16le');
-    expect(txtString).toContain('이사회명\t직함\t성명\t티셔츠사이즈\t#QR코드');
-    expect(txtString).toContain('서울후원이사회\t회장\t홍길동\t105\t서울후원이사회_회장_홍길동.png');
-    expect(txtString).toContain('서울후원이사회\t사모\t김영희\t95\t서울후원이사회_사모_김영희.png');
+    expect(txtString).toContain('이사회명\t직함\t성명\t#QR코드');
+    expect(txtString).toContain('서울후원이사회\t회장\t홍길동\t서울후원이사회_회장_홍길동.png');
+    expect(txtString).toContain('서울후원이사회\t사모\t김영희\t서울후원이사회_사모_김영희.png');
   });
 });

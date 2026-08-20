@@ -5,6 +5,7 @@ import { ManifestRecord } from 'shared';
 export class ManifestExporter {
   /**
    * ManifestRecord 배열을 수신하여 Adobe InDesign Data Merge 호환 UTF-16 LE 탭 구분 TXT 파일로 저장
+   * (규격: 이사회명, 직함, 성명, #QR코드)
    */
   public static exportToTxt(records: ManifestRecord[], outputFilePath: string): void {
     const dir = path.dirname(outputFilePath);
@@ -12,13 +13,12 @@ export class ManifestExporter {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    // Adobe InDesign 탭 구분 TXT 데이터 병합 헤더 (규격: 이사회명, 직함, 성명, 티셔츠사이즈, #QR코드)
-    const headers = ['이사회명', '직함', '성명', '티셔츠사이즈', '#QR코드'];
+    // Adobe InDesign 탭 구분 TXT 데이터 병합 헤더 (규격: 이사회명, 직함, 성명, #QR코드)
+    const headers = ['이사회명', '직함', '성명', '#QR코드'];
     const rows = records.map((rec) => [
       rec.affiliation,
       rec.title,
       rec.name,
-      rec.tshirtSize || '',
       rec.fileName,
     ]);
 
