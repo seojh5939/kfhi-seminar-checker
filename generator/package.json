@@ -1,6 +1,6 @@
 {
   "name": "generator",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "기아대책 명찰 QR 생성기",
   "author": "KFHI",
   "private": true,
