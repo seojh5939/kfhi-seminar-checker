@@ -167,9 +167,18 @@ ipcMain.handle('reader:google-select-credentials-file', async () => {
   }
 
   const selectedPath = result.filePaths[0];
-  const ok = googleAuthService.setCustomCredentialsPath(selectedPath);
-  if (ok) {
-    return selectedPath;
+  try {
+    // 선택된 키 파일을 사용자 AppData 영구 폴더에 복사하여 앱 재시작 시에도 자동 유지되도록 저장
+    const destPath = path.join(app.getPath('userData'), 'google-credentials.json');
+    fs.copyFileSync(selectedPath, destPath);
+    googleAuthService.setCustomCredentialsPath(destPath);
+    return destPath;
+  } catch (e) {
+    console.error('Failed to copy credentials to userData:', e);
+    const ok = googleAuthService.setCustomCredentialsPath(selectedPath);
+    if (ok) {
+      return selectedPath;
+    }
   }
   return null;
 });

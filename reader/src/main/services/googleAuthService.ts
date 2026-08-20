@@ -28,36 +28,60 @@ export class GoogleAuthService {
   }
 
   /**
-   * google-credentials.json 경로 탐색 (프로젝트 최상위 루트 우선 탐색)
+   * google-credentials.json 경로 종합 탐색 (설치형 패키지, 포터블, AppData, 루트 전체 지원)
    */
   public findCredentialsPath(): string | null {
     if (this.customCredentialsPath && fs.existsSync(this.customCredentialsPath)) {
       return this.customCredentialsPath;
     }
 
-    const candidatePaths = [
-      // 1. 현재 작업 디렉터리 (프로젝트 루트)
-      path.resolve(process.cwd(), 'google-credentials.json'),
-      // 2. reader 상위 (프로젝트 루트)
-      path.resolve(app.getAppPath(), '../../google-credentials.json'),
-      path.resolve(app.getAppPath(), '../google-credentials.json'),
-      // 3. reader 폴더 내부
-      path.resolve(process.cwd(), 'reader', 'google-credentials.json'),
-      path.resolve(app.getAppPath(), 'google-credentials.json'),
-      // 4. userData 폴더
-      path.join(app.getPath('userData'), 'google-credentials.json'),
+    const candidateDirs: string[] = [
+      // 1. 사용자 영구 AppData 폴더 (%APPDATA%/reader/) - 설치형에서 수동 선택 시 복사되는 위치
+      app.getPath('userData'),
+
+      // 2. 패키징된 실행 환경: exe 파일과 동일한 디렉터리 (포터블 또는 설치 폴더)
+      process.execPath ? path.dirname(process.execPath) : '',
+
+      // 3. 패키징된 리소스 폴더 (resources/)
+      process.resourcesPath || '',
+
+      // 4. asar 패키지 내부 및 내부 dist 폴더
+      app.getAppPath(),
+      path.join(app.getAppPath(), 'dist'),
+      path.join(app.getAppPath(), 'dist', 'main'),
+      path.resolve(app.getAppPath(), '..'),
+      path.resolve(app.getAppPath(), '../..'),
+
+      // 5. 작업 디렉터리 (프로젝트 루트 및 reader 폴더)
+      process.cwd(),
+      path.resolve(process.cwd(), 'reader'),
+      path.resolve(process.cwd(), '..'),
+
+      // 6. 사용자가 바탕화면이나 내 문서에 둘 경우 자동 감지
+      app.getPath('desktop'),
+      app.getPath('documents'),
+    ].filter(Boolean);
+
+    const filenames = [
+      'google-credentials.json',
+      'credentials.json',
+      'client_secret.json',
+      'client_secrets.json',
     ];
 
-    for (const p of candidatePaths) {
-      if (fs.existsSync(p)) {
+    for (const dir of candidateDirs) {
+      for (const fn of filenames) {
         try {
-          const content = fs.readFileSync(p, 'utf8');
-          const parsed = JSON.parse(content);
-          if (parsed.installed || parsed.web || (parsed.client_id && parsed.client_secret)) {
-            return p;
+          const fullPath = path.join(dir, fn);
+          if (fs.existsSync(fullPath)) {
+            const content = fs.readFileSync(fullPath, 'utf8');
+            const parsed = JSON.parse(content);
+            if (parsed.installed || parsed.web || (parsed.client_id && parsed.client_secret)) {
+              return fullPath;
+            }
           }
         } catch {
-          // ignore parsing error, try next
+          // ignore parsing / permission error, try next
         }
       }
     }
@@ -222,7 +246,7 @@ export class GoogleAuthService {
       if (!creds) {
         return resolve({
           success: false,
-          error: '프로젝트 루트에 google-credentials.json 파일이 없거나 잘못된 형식입니다.',
+          error: 'google-credentials.json 파일을 찾을 수 없습니다. 설정에서 [📁 키 파일(JSON) 직접 선택]을 눌러 파일을 지정해주세요.',
         });
       }
 
