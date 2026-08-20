@@ -9,6 +9,8 @@ export interface SpreadsheetDetails {
 
 export class GoogleSheetsService {
   private authService: GoogleAuthService;
+  // 인메모리 탭 확인 캐시 (key: `${spreadsheetId}:${locationName}`)
+  private verifiedTabs = new Set<string>();
 
   constructor(authService: GoogleAuthService) {
     this.authService = authService;
@@ -82,11 +84,19 @@ export class GoogleSheetsService {
       if (res.status === 403) {
         throw new Error('스프레드시트에 접근 권한이 없습니다. 시트 공유 권한을 확인해주세요.');
       }
+      if (res.status === 429) {
+        throw new Error('구글 API 분당 요청 한도(429)를 초과했습니다. 잠시 후 자동 재시도됩니다.');
+      }
       throw new Error(`스프레드시트 정보 조회 실패 (${res.status}): ${errText}`);
     }
 
     const data: any = await res.json();
     const sheetTitles = (data.sheets || []).map((s: any) => s.properties?.title || '').filter(Boolean);
+
+    // 조회된 탭들을 캐시에 미리 등록하여 이후 불필요한 메타데이터 호출 방지
+    sheetTitles.forEach((t: string) => {
+      this.verifiedTabs.add(`${data.spreadsheetId}:${t}`);
+    });
 
     return {
       id: data.spreadsheetId,
@@ -136,16 +146,22 @@ export class GoogleSheetsService {
   }
 
   /**
-   * 장소별 시트(탭) 존재 여부 확인 및 없으면 자동 생성 + 헤더 초기화
+   * 장소별 시트(탭) 존재 여부 확인 및 없으면 자동 생성 + 헤더 초기화 (인메모리 캐시로 중복 API 호출 방지)
    */
   public async ensureLocationTab(spreadsheetId: string, locationName: string): Promise<void> {
     const rawId = this.extractSpreadsheetId(spreadsheetId);
     const locName = (locationName || '기본장소').trim();
-    const details = await this.getSpreadsheetDetails(rawId);
+    const cacheKey = `${rawId}:${locName}`;
 
+    // 1. 이미 확인/생성된 탭이면 API 호출 없이 즉시 리턴 (호출 50% 절감 방어)
+    if (this.verifiedTabs.has(cacheKey)) {
+      return;
+    }
+
+    const details = await this.getSpreadsheetDetails(rawId);
     const accessToken = await this.authService.getValidAccessToken();
 
-    // 1. 해당 장소 탭이 없는 경우 새로 추가
+    // 2. 해당 장소 탭이 없는 경우 새로 추가
     if (!details.sheetTitles.includes(locName)) {
       const addSheetUrl = `https://sheets.googleapis.com/v4/spreadsheets/${rawId}:batchUpdate`;
       const batchRes = await fetch(addSheetUrl, {
@@ -173,7 +189,7 @@ export class GoogleSheetsService {
         throw new Error(`장소 탭 [${locName}] 생성 실패: ${errText}`);
       }
 
-      // 2. 새 탭의 1행에 7개 표준 헤더 작성 (Google Sheets REST range: '{sheetName}'!A1:G1 URL encoded)
+      // 3. 새 탭의 1행에 7개 표준 헤더 작성
       const encodedRange = encodeURIComponent(`'${locName}'!A1:G1`);
       const headerUrl = `https://sheets.googleapis.com/v4/spreadsheets/${rawId}/values/${encodedRange}?valueInputOption=USER_ENTERED`;
       const headerRes = await fetch(headerUrl, {
@@ -192,6 +208,9 @@ export class GoogleSheetsService {
         console.error('Header update error:', errText);
       }
     }
+
+    // 캐시에 등록
+    this.verifiedTabs.add(cacheKey);
   }
 
   /**
@@ -209,7 +228,7 @@ export class GoogleSheetsService {
     const rawId = this.extractSpreadsheetId(spreadsheetId);
     const locName = (locationName || '기본장소').trim();
 
-    // 탭 존재 및 헤더 확인
+    // 탭 존재 및 헤더 확인 (캐시 적용)
     await this.ensureLocationTab(rawId, locName);
 
     const accessToken = await this.authService.getValidAccessToken();
@@ -225,7 +244,7 @@ export class GoogleSheetsService {
       r.isDuplicate ? '중복' : '정상',
     ]);
 
-    // Google Sheets REST API values.append: POST .../values/{range}:append?valueInputOption=USER_ENTERED
+    // Google Sheets REST API values.append
     const encodedRange = encodeURIComponent(`'${locName}'!A:G`);
     const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${rawId}/values/${encodedRange}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
 
@@ -243,6 +262,9 @@ export class GoogleSheetsService {
     if (!res.ok) {
       const errText = await res.text();
       console.error('Append rows error:', errText);
+      if (res.status === 429) {
+        throw new Error('429:RATE_LIMIT_EXCEEDED');
+      }
       throw new Error(`구글 시트 행 추가 실패 (${res.status}): ${errText}`);
     }
 

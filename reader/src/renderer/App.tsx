@@ -35,6 +35,17 @@ export const App: React.FC = () => {
     return !!localStorage.getItem('kfhi_reader_location');
   });
   const [inputLocation, setInputLocation] = useState<string>('');
+  const locationInputRef = useRef<HTMLInputElement>(null);
+
+  // 장소 입력 화면으로 전환될 때마다 인풋에 자동 포커스 복구 (Alt+Tab 방지)
+  useEffect(() => {
+    if (!isLocationSet) {
+      const timer = setTimeout(() => {
+        locationInputRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isLocationSet]);
 
   const [scanHistory, setScanHistory] = useState<ScanRecord[]>(() => {
     const saved = localStorage.getItem('kfhi_scan_history');
@@ -43,12 +54,6 @@ export const App: React.FC = () => {
 
   const [showHistoryToggle, setShowHistoryToggle] = useState<boolean>(false);
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
-
-  // 비밀번호 인증 모달 전용 상태 (CSV 내보내기 vs 인증내역 초기화)
-  const [showPasswordModal, setShowPasswordModal] = useState<boolean>(false);
-  const [authPurpose, setAuthPurpose] = useState<'CSV' | 'RESET'>('CSV');
-  const [passwordInput, setPasswordInput] = useState<string>('');
-  const [passwordError, setPasswordError] = useState<string>('');
 
   // 유니크 참석 인원 카운트 (중복 스캔 제외)
   const uniqueAttendeeCount = scanHistory.filter((r) => !r.isDuplicate).length;
@@ -96,11 +101,14 @@ export const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [lastSyncStatus, setLastSyncStatus] = useState<string>('');
 
-  // Ref를 활용한 클로저 안전 동기화 상태 관리
+  // 다중 기기 Quota 방어 및 Rate Limiter Ref 상태
   const syncQueueRef = useRef<ScanRecord[]>(syncQueue);
   const googleSyncConfigRef = useRef<GoogleSyncConfig>(googleSyncConfig);
   const locationNameRef = useRef<string>(locationName);
   const isSyncingRef = useRef<boolean>(false);
+  const syncDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const backoffUntilRef = useRef<number>(0);
+  const retryCountRef = useRef<number>(0);
 
   useEffect(() => {
     syncQueueRef.current = syncQueue;
@@ -175,14 +183,33 @@ export const App: React.FC = () => {
     }
   };
 
-  // 구글 로그아웃 처리
+  // [버그수정 1] 구글 로그아웃 시 UI 즉시 갱신 및 상태 초기화
   const handleGoogleLogout = async () => {
     if (!window.electronAPI?.googleLogout) return;
     if (confirm('구글 계정 연결을 해제하시겠습니까?')) {
       await window.electronAPI.googleLogout();
-      await refreshGoogleAuthStatus();
+
+      // UI 상태 즉시 미인증으로 리셋
+      setGoogleAuth((prev) => ({
+        hasCredentialsFile: prev.hasCredentialsFile,
+        credentialsPath: prev.credentialsPath,
+        isAuthenticated: false,
+        userEmail: undefined,
+        userName: undefined,
+      }));
+
+      const clearedConfig: GoogleSyncConfig = {
+        spreadsheetId: '',
+        spreadsheetTitle: '',
+        autoSyncEnabled: false,
+      };
+      setGoogleSyncConfig(clearedConfig);
+      googleSyncConfigRef.current = clearedConfig;
+      localStorage.removeItem('kfhi_google_sync_config');
+
       setRecentSheets([]);
       setSheetActionMsg('로그아웃되었습니다.');
+      await refreshGoogleAuthStatus();
     }
   };
 
@@ -274,9 +301,18 @@ export const App: React.FC = () => {
     window.electronAPI.googleOpenSheetUrl(url);
   };
 
-  // 백그라운드 동기화 실행 (Queue Worker)
+  // [다중 기기 Quota 방어 2 & 3] 지능형 마이크로 배치 및 429 지수 백오프 동기화 워커
   const processSyncQueue = useCallback(async () => {
     if (isSyncingRef.current) return;
+
+    // 429 한도 초과 백오프 대기 시간 확인
+    const now = Date.now();
+    if (now < backoffUntilRef.current) {
+      const remainingSec = Math.ceil((backoffUntilRef.current - now) / 1000);
+      setLastSyncStatus(`호출량 조절 중 (${remainingSec}초 후 재시도)`);
+      return;
+    }
+
     const queue = syncQueueRef.current;
     const config = googleSyncConfigRef.current;
     const currentLoc = locationNameRef.current || '기본장소';
@@ -288,7 +324,8 @@ export const App: React.FC = () => {
     isSyncingRef.current = true;
     setIsSyncing(true);
 
-    const batch = queue.slice(0, 10); // 최대 10건씩 묶음 전송
+    // 1회 요청에 최대 25건 묶음(Batch) 전송으로 분당 API 호출 수 극적 절감
+    const batch = queue.slice(0, 25);
 
     try {
       const res = await window.electronAPI.googleSyncRecords(
@@ -298,11 +335,21 @@ export const App: React.FC = () => {
       );
 
       if (res.success) {
-        // 성공한 항목만 큐에서 제거
+        // 성공 시 큐에서 처리 완료된 배치 제거 및 백오프 리셋
         setSyncQueue((prev) => prev.slice(batch.length));
-        setLastSyncStatus(`정상 동기화됨 (${new Date().toLocaleTimeString()})`);
+        retryCountRef.current = 0;
+        backoffUntilRef.current = 0;
+        setLastSyncStatus(`실시간 동기화 완료 (${new Date().toLocaleTimeString()})`);
       } else {
-        setLastSyncStatus(`동기화 실패: ${res.error}`);
+        // 429 Rate Limit 감지 시 지수 백오프 + 무작위 지터 적용
+        if (res.error?.includes('429') || res.error?.includes('RATE_LIMIT')) {
+          retryCountRef.current = Math.min(retryCountRef.current + 1, 5);
+          const backoffDelay = Math.min(30000, 2000 * Math.pow(2, retryCountRef.current) + Math.random() * 1000);
+          backoffUntilRef.current = Date.now() + backoffDelay;
+          setLastSyncStatus(`API 한도 조절 대기 중 (${Math.round(backoffDelay / 1000)}초)`);
+        } else {
+          setLastSyncStatus(`동기화 지연: ${res.error}`);
+        }
       }
     } catch (e: any) {
       setLastSyncStatus(`네트워크 대기: ${e.message}`);
@@ -312,11 +359,11 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // 주기적 동기화 타이머 (3초 간격)
+  // 주기적 동기화 폴링 타이머 (2.5초 간격)
   useEffect(() => {
     const timer = setInterval(() => {
       processSyncQueue();
-    }, 3000);
+    }, 2500);
     return () => clearInterval(timer);
   }, [processSyncQueue]);
 
@@ -357,7 +404,7 @@ export const App: React.FC = () => {
     setIsLocationSet(true);
   };
 
-  // 장소 변경 처리
+  // [버그수정 2] 장소 변경 처리 (백업 후 인풋 포커스 보장)
   const handleLocationResetWithBackup = async () => {
     if (!confirm('장소 변경을 진행하시겠습니까?')) {
       return;
@@ -378,17 +425,20 @@ export const App: React.FC = () => {
 
     setShowSettingsModal(false);
     setIsLocationSet(false);
+    setInputLocation('');
   };
 
-  // QR 인증 내역 초기화 처리
+  // [기능변경 3] QR 인증 내역 초기화 (비밀번호 제거, 즉시 confirm 확인)
   const handleResetHistoryClick = () => {
-    if (!confirm('정말 초기화하시겠습니까? 그동안의 인증기록이 모두 사라집니다.')) {
+    if (!confirm('정말 초기화하시겠습니까? 그동안의 모든 인증 및 방문 기록이 삭제됩니다.')) {
       return;
     }
-    setAuthPurpose('RESET');
-    setPasswordInput('');
-    setPasswordError('');
-    setShowPasswordModal(true);
+    setScanHistory([]);
+    localStorage.removeItem('kfhi_scan_history');
+    setSyncQueue([]);
+    localStorage.removeItem('kfhi_google_sync_queue');
+    setShowSettingsModal(false);
+    alert('인증 내역이 성공적으로 초기화되었습니다.');
   };
 
   const popupTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -397,13 +447,16 @@ export const App: React.FC = () => {
     // 1. 로컬 상태 및 스토리지 즉시 추가 (0ms 지연)
     setScanHistory((prev) => [record, ...prev]);
 
-    // 2. 구글 시트 동기화 큐에 추가
+    // 2. 구글 시트 동기화 큐에 추가 및 800ms 마이크로 디바운스 배치 전송 트리거
     if (googleSyncConfigRef.current.autoSyncEnabled && googleSyncConfigRef.current.spreadsheetId) {
       setSyncQueue((prev) => [...prev, record]);
-      // 즉시 동기화 시도 트리거
-      setTimeout(() => {
+
+      if (syncDebounceTimerRef.current) {
+        clearTimeout(syncDebounceTimerRef.current);
+      }
+      syncDebounceTimerRef.current = setTimeout(() => {
         processSyncQueue();
-      }, 50);
+      }, 800);
     }
 
     if (popupTimerRef.current) {
@@ -445,44 +498,21 @@ export const App: React.FC = () => {
     }, popupDuration * 1000);
   };
 
-  const handleExportCsvClick = () => {
+  // [기능변경 3] CSV 내보내기 (비밀번호 제거, 즉시 저장 경로 다이얼로그 호출)
+  const handleExportCsvClick = async () => {
     if (scanHistory.length === 0) {
       alert('내보낼 방문 기록이 없습니다.');
       return;
     }
-    setAuthPurpose('CSV');
-    setPasswordInput('');
-    setPasswordError('');
-    setShowPasswordModal(true);
-  };
-
-  const handlePasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (passwordInput !== '2026-NDS') {
-      setPasswordError('비밀번호가 올바르지 않습니다.');
-      return;
-    }
-
-    setShowPasswordModal(false);
-
-    if (authPurpose === 'RESET') {
-      setScanHistory([]);
-      localStorage.removeItem('kfhi_scan_history');
-      setSyncQueue([]);
-      localStorage.removeItem('kfhi_google_sync_queue');
-      setShowSettingsModal(false);
-      alert('인증 내역이 성공적으로 초기화되었습니다.');
-    } else {
-      const currentLoc = locationName || localStorage.getItem('kfhi_reader_location') || '장소미지정';
-      if (window.electronAPI) {
-        const filePath = await window.electronAPI.selectOutputDir(currentLoc);
-        if (filePath) {
-          const result = await window.electronAPI.exportCsv(scanHistory, filePath);
-          if (result.success) {
-            alert(`총 ${result.count}건의 방문 기록이 CSV로 정상 내보내기 되었습니다.`);
-          } else {
-            alert(`CSV 내보내기 실패: ${result.error}`);
-          }
+    const currentLoc = locationName || localStorage.getItem('kfhi_reader_location') || '장소미지정';
+    if (window.electronAPI) {
+      const filePath = await window.electronAPI.selectOutputDir(currentLoc);
+      if (filePath) {
+        const result = await window.electronAPI.exportCsv(scanHistory, filePath);
+        if (result.success) {
+          alert(`총 ${result.count}건의 방문 기록이 CSV로 정상 내보내기 되었습니다.`);
+        } else {
+          alert(`CSV 내보내기 실패: ${result.error}`);
         }
       }
     }
@@ -601,7 +631,7 @@ export const App: React.FC = () => {
                   </span>
                   <span style={{ fontSize: '12px', color: '#a7f3d0' }}>({locationName || '탭'} 탭)</span>
                   {syncQueue.length > 0 ? (
-                    <span style={{ backgroundColor: '#eab308', color: '#000', padding: '1px 6px', borderRadius: '10px', fontSize: '11px' }}>
+                    <span style={{ backgroundColor: '#eab308', color: '#000', padding: '1px 6px', borderRadius: '10px', fontSize: '11px', fontWeight: '900' }}>
                       {syncQueue.length}건 대기
                     </span>
                   ) : (
@@ -644,10 +674,12 @@ export const App: React.FC = () => {
             <h2 style={{ fontSize: '18px', marginBottom: '16px', color: '#f8fafc' }}>📍 스캔 장소 등록</h2>
             <form onSubmit={handleLocationSubmit}>
               <input
+                ref={locationInputRef}
                 type="text"
                 placeholder="예: 입구, 행복한나눔, 로비"
                 value={inputLocation}
                 onChange={(e) => setInputLocation(e.target.value)}
+                autoFocus
                 style={{
                   width: '100%',
                   padding: '12px',
@@ -657,6 +689,7 @@ export const App: React.FC = () => {
                   color: 'white',
                   marginBottom: '16px',
                   boxSizing: 'border-box',
+                  outline: 'none',
                 }}
               />
               <button
@@ -1345,7 +1378,7 @@ export const App: React.FC = () => {
                 }}
               >
                 <span>🗑️ QR 인증내역 초기화</span>
-                <span style={{ fontSize: '13px', opacity: 0.8 }}>비밀번호 필요</span>
+                <span style={{ fontSize: '13px', opacity: 0.8 }}>즉시 초기화</span>
               </button>
 
               <button
@@ -1383,105 +1416,6 @@ export const App: React.FC = () => {
             >
               기아대책 QR 인식기 v{appPackageJson.version}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* 관리자 비밀번호 검증 모달 */}
-      {showPasswordModal && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.75)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10000,
-            padding: '20px',
-            backdropFilter: 'blur(4px)',
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: '#1e293b',
-              padding: '32px',
-              borderRadius: '16px',
-              width: '100%',
-              maxWidth: '420px',
-              textAlign: 'center',
-              border: '1px solid #475569',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
-            }}
-          >
-            <h3 style={{ margin: '0 0 8px 0', fontSize: '20px', color: '#38bdf8' }}>🔒 관리자 인증</h3>
-            <p style={{ margin: '0 0 20px 0', fontSize: '14px', color: '#94a3b8' }}>
-              비밀번호는 관리자에게 문의하시기 바랍니다
-            </p>
-
-            <form onSubmit={handlePasswordSubmit}>
-              <input
-                type="password"
-                placeholder="비밀번호 입력"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                autoFocus
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  borderRadius: '8px',
-                  border: passwordError ? '2px solid #f87171' : '1px solid #475569',
-                  backgroundColor: '#0f172a',
-                  color: 'white',
-                  fontSize: '16px',
-                  marginBottom: '12px',
-                  boxSizing: 'border-box',
-                  outline: 'none',
-                }}
-              />
-              {passwordError && (
-                <div style={{ color: '#f87171', fontSize: '13px', marginBottom: '16px', textAlign: 'left' }}>
-                  {passwordError}
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => setShowPasswordModal(false)}
-                  style={{
-                    flex: 1,
-                    padding: '12px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    backgroundColor: '#475569',
-                    color: 'white',
-                    fontWeight: 'bold',
-                    cursor: 'pointer',
-                  }}
-                >
-                  취소
-                </button>
-                <button
-                  type="submit"
-                  style={{
-                    flex: 1,
-                    padding: '12px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    backgroundColor: authPurpose === 'RESET' ? '#dc2626' : '#10b981',
-                    color: 'white',
-                    fontWeight: 'bold',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {authPurpose === 'RESET' ? '인증 및 초기화' : '인증 및 다운로드'}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
