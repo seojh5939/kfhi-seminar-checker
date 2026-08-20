@@ -20,4 +20,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   googleSyncRecords: (spreadsheetId: string, locationName: string, records: any[]) =>
     ipcRenderer.invoke('reader:google-sync-records', { spreadsheetId, locationName, records }),
   googleOpenSheetUrl: (url: string) => ipcRenderer.invoke('reader:google-open-sheet-url', url),
+  focusWindow: () => ipcRenderer.invoke('reader:focus-window'),
 });

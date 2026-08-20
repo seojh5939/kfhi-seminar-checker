@@ -23,6 +23,7 @@ declare global {
       googleCreateSpreadsheet: (title?: string) => Promise<GoogleSpreadsheetItem>;
       googleSyncRecords: (spreadsheetId: string, locationName: string, records: any[]) => Promise<{ success: boolean; count: number; error?: string }>;
       googleOpenSheetUrl: (url: string) => Promise<void>;
+      focusWindow: () => Promise<boolean>;
     };
   }
 }
@@ -40,8 +41,11 @@ export const App: React.FC = () => {
   // 장소 입력 화면으로 전환될 때마다 인풋에 자동 포커스 복구 (Alt+Tab 방지)
   useEffect(() => {
     if (!isLocationSet) {
+      window.electronAPI?.focusWindow?.();
+      window.focus();
       const timer = setTimeout(() => {
         locationInputRef.current?.focus();
+        locationInputRef.current?.select();
       }, 100);
       return () => clearTimeout(timer);
     }

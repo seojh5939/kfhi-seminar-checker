@@ -231,3 +231,12 @@ ipcMain.handle('reader:google-open-sheet-url', async (_event, targetUrl: string)
     shell.openExternal(targetUrl);
   }
 });
+
+ipcMain.handle('reader:focus-window', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+    mainWindow.webContents.focus();
+  }
+  return true;
+});
