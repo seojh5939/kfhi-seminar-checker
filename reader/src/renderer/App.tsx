@@ -28,6 +28,12 @@ declare global {
   }
 }
 
+// 다중 기기(최대 10대) 동시 운영 환경 Google API Quota (분당 60회 쓰기) 방어 최적화 상수
+const SYNC_DEBOUNCE_MS = 1500; // 스캔 연속 발생 시 디바운스 대기시간 (1.5초)
+const MIN_REQUEST_INTERVAL_MS = 4000; // 단일 기기 최소 요청 간격 (4.0초 - 10대 동시 접속 시 상한선 40~50회/분 완벽 보장)
+const SYNC_POLL_INTERVAL_MS = 5000; // 백그라운드 주기적 동기화 폴링 주기 (5.0초)
+const MAX_BATCH_SIZE = 25; // 1회 최대 묶음 전송 건수
+
 export const App: React.FC = () => {
   const [locationName, setLocationName] = useState<string>(() => {
     return localStorage.getItem('kfhi_reader_location') || '';
@@ -318,8 +324,8 @@ export const App: React.FC = () => {
       return;
     }
 
-    // 단일 기기 최소 요청 간격(1.5초) 강제 보장 -> 단일 기기당 분당 최대 40회(안전구역)로 물리적 락다운
-    if (now - lastRequestTimeRef.current < 1500) {
+    // 단일 기기 최소 요청 간격(4.0초) 강제 보장 -> 10대 동시 운영 시 분당 최대 40~50회(안전구역)로 물리적 락다운
+    if (now - lastRequestTimeRef.current < MIN_REQUEST_INTERVAL_MS) {
       return;
     }
 
@@ -336,7 +342,7 @@ export const App: React.FC = () => {
     setIsSyncing(true);
 
     // 1회 요청에 최대 25건 묶음(Batch) 전송으로 분당 API 호출 수 극적 절감
-    const batch = queue.slice(0, 25);
+    const batch = queue.slice(0, MAX_BATCH_SIZE);
 
     try {
       const res = await window.electronAPI.googleSyncRecords(
@@ -370,11 +376,11 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // 주기적 동기화 폴링 타이머 (2.5초 간격)
+  // 주기적 동기화 폴링 타이머 (5.0초 간격)
   useEffect(() => {
     const timer = setInterval(() => {
       processSyncQueue();
-    }, 2500);
+    }, SYNC_POLL_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [processSyncQueue]);
 
@@ -458,7 +464,7 @@ export const App: React.FC = () => {
     // 1. 로컬 상태 및 스토리지 즉시 추가 (0ms 지연)
     setScanHistory((prev) => [record, ...prev]);
 
-    // 2. 구글 시트 동기화 큐에 추가 및 800ms 마이크로 디바운스 배치 전송 트리거
+    // 2. 구글 시트 동기화 큐에 추가 및 1.5초 마이크로 디바운스 배치 전송 트리거
     if (googleSyncConfigRef.current.autoSyncEnabled && googleSyncConfigRef.current.spreadsheetId) {
       setSyncQueue((prev) => [...prev, record]);
 
@@ -467,7 +473,7 @@ export const App: React.FC = () => {
       }
       syncDebounceTimerRef.current = setTimeout(() => {
         processSyncQueue();
-      }, 800);
+      }, SYNC_DEBOUNCE_MS);
     }
 
     if (popupTimerRef.current) {
