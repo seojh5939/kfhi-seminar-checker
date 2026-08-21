@@ -16,7 +16,7 @@ function createWindow() {
     height: 780,
     minWidth: 850,
     minHeight: 620,
-    title: '기아대책 행사 QR코드 대량 생성기 (v1.2.0)',
+    title: '기아대책 행사 QR코드 대량 생성기 (v1.2.1)',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
