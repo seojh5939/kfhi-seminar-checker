@@ -16,13 +16,12 @@ export class CryptoEngine {
   }
 
   /**
-   * 참석자 정보를 평문 구분자 포맷 문자열로 변환 (v2 규격)
-   * 포맷: v2|이사회명|직책|성명|티셔츠사이즈|생성시각
+   * 참석자 정보를 초경량 평문 구분자 포맷 문자열로 변환 (v2 규격 - 20mm QR 점 크기 극대화)
+   * 포맷: v2|이사회명|직책|성명|티셔츠사이즈
    */
   public toPlainPayloadString(attendee: AttendeeInput): string {
-    const ts = Date.now();
     const tshirt = attendee.tshirtSize || '';
-    return `v2|${attendee.affiliation}|${attendee.title}|${attendee.name}|${tshirt}|${ts}`;
+    return `v2|${attendee.affiliation}|${attendee.title}|${attendee.name}|${tshirt}`;
   }
 
   /**
@@ -128,14 +127,14 @@ export class CryptoEngine {
     // 구분자 포맷 fallback 파싱
     if (decryptedStr.includes('|')) {
       const parts = decryptedStr.split('|');
-      if (parts.length >= 5) {
+      if (parts.length >= 4) {
         return {
           v: 2,
           a: parts[1] || '',
           t: parts[2] || '',
           n: parts[3] || '',
           s: parts[4] || '',
-          ts: Number(parts[5]) || Date.now(),
+          ts: (parts[5] ? Number(parts[5]) : Date.now()),
         };
       }
     }
@@ -144,7 +143,7 @@ export class CryptoEngine {
   }
 
   /**
-   * v2 평문 파싱: v2|affiliation|title|name|tshirt|ts
+   * v2 평문 파싱: v2|affiliation|title|name|tshirt (신규 규격) 또는 v2|affiliation|title|name|tshirt|ts (구규격 하위호환)
    */
   private parseV2Plain(str: string): QRPayload {
     const parts = str.split('|');
@@ -153,7 +152,7 @@ export class CryptoEngine {
     }
     const [vStr, a, t, n, s, tsStr] = parts;
     const v = Number(vStr.replace(/^v/, '')) || 2;
-    const ts = Number(tsStr) || Date.now();
+    const ts = tsStr ? Number(tsStr) : Date.now();
     return {
       v,
       a: a || '',

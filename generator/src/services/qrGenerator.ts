@@ -63,7 +63,7 @@ export class QRGeneratorEngine {
       const qrBuffer = await qrcodeModule.toBuffer(payloadString, {
         width: 300,
         margin: 1,
-        errorCorrectionLevel: 'M',
+        errorCorrectionLevel: 'L',
         color: { dark: '#000000', light: '#FFFFFF' },
       });
 
