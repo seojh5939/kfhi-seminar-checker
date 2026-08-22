@@ -173,26 +173,6 @@ export const Scanner: React.FC<ScannerProps> = ({
           setCameraStatus('READY');
           setIsScanning(true);
 
-          // 하드웨어/ISP 레벨 디지털 줌 지원 장치 자동 활성화 (2.0x 줌)
-          try {
-            const videoTrack = stream.getVideoTracks()[0];
-            if (videoTrack && (videoTrack as any).getCapabilities) {
-              const caps: any = (videoTrack as any).getCapabilities();
-              if (caps && caps.zoom) {
-                const maxZoom = caps.zoom.max || 1.0;
-                const minZoom = caps.zoom.min || 1.0;
-                const targetZoom = Math.min(2.0, maxZoom);
-                if (targetZoom > minZoom) {
-                  await (videoTrack as any).applyConstraints({
-                    advanced: [{ zoom: targetZoom }],
-                  });
-                }
-              }
-            }
-          } catch {
-            // 하드웨어 줌 미지원 장치는 소프트웨어 줌으로 대체
-          }
-
           // 카메라 정상 시작 후 사용 가능한 카메라 목록 업데이트
           await updateCameraDevices();
           scanFrameLoop();
@@ -204,16 +184,14 @@ export const Scanner: React.FC<ScannerProps> = ({
       }
     };
 
-    // [10~20cm 원거리 소형 QR 인식용] 듀얼 스케일 2.2배 소프트웨어 디지털 돋보기 루프
+    // 중앙 ROI (안전한 영역) 초고속 프레임 루프 (100ms 디바운스)
     let lastScanTime = 0;
-    let frameIndex = 0;
 
     const scanFrameLoop = async () => {
       const now = Date.now();
-      if (now - lastScanTime >= 80 && videoRef.current && canvasRef.current && !isProcessingFrame.current) {
+      if (now - lastScanTime >= 100 && videoRef.current && canvasRef.current && !isProcessingFrame.current) {
         lastScanTime = now;
         isProcessingFrame.current = true;
-        frameIndex++;
 
         const video = videoRef.current;
         const canvas = canvasRef.current;
@@ -223,49 +201,19 @@ export const Scanner: React.FC<ScannerProps> = ({
           const videoWidth = video.videoWidth;
           const videoHeight = video.videoHeight;
 
-          // 듀얼 스케일 교차 스캔:
-          // 1. 줌 모드 (70% 빈도): 중앙 150x150 핀포인트 영역 -> 320x320으로 2.13배 확대 (10~20cm 거리 전용)
-          // 2. 와이드 모드 (30% 빈도): 중앙 280x280 영역 -> 320x320 드로잉 (가까이 댄 경우 Fallback)
-          const isZoomMode = frameIndex % 3 !== 0;
-          const sourceCropSize = isZoomMode
-            ? Math.floor(Math.min(150, videoWidth, videoHeight))
-            : Math.floor(Math.min(280, videoWidth, videoHeight));
+          // 안정적인 중앙 ROI 크롭 (충분한 영역 확보로 QR 모서리 잘림 방지)
+          const cropSize = Math.floor(Math.min(420, videoWidth, videoHeight));
+          const cropX = Math.floor((videoWidth - cropSize) / 2);
+          const cropY = Math.floor((videoHeight - cropSize) / 2);
 
-          const targetCanvasSize = 320;
-          const cropX = Math.floor((videoWidth - sourceCropSize) / 2);
-          const cropY = Math.floor((videoHeight - sourceCropSize) / 2);
+          canvas.width = cropSize;
+          canvas.height = cropSize;
 
-          canvas.width = targetCanvasSize;
-          canvas.height = targetCanvasSize;
-
-          // 바이리니어 슈퍼 샘플링 확대 드로잉
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
-          ctx.drawImage(video, cropX, cropY, sourceCropSize, sourceCropSize, 0, 0, targetCanvasSize, targetCanvasSize);
-
-          // [초경량 이미지 전처리 필터] 강한 S-Curve 흑백 대비 확장 (<1ms 연산)
-          try {
-            const imgData = ctx.getImageData(0, 0, targetCanvasSize, targetCanvasSize);
-            const data = imgData.data;
-            for (let i = 0; i < data.length; i += 4) {
-              const r = data[i];
-              const g = data[i + 1];
-              const b = data[i + 2];
-              // 정수 비트시프트 고속 그레이스케일: Y = 0.299R + 0.587G + 0.114B
-              const gray = (r * 77 + g * 150 + b * 29) >> 8;
-              // 강한 S-curve 대비 확장: 밝은 곳은 더 하얗게, 어두운 모듈은 더 까맣게
-              const enhanced = gray < 128 ? Math.max(0, gray - 40) : Math.min(255, gray + 40);
-              data[i] = enhanced;
-              data[i + 1] = enhanced;
-              data[i + 2] = enhanced;
-            }
-            ctx.putImageData(imgData, 0, 0);
-          } catch {
-            // ImageData 전처리 실패 시 원본 Canvas 그대로 진행
-          }
+          // 카메라 원본 픽셀 무손실 드로잉 (WASM 네이티브 이진화 엔진 활용)
+          ctx.drawImage(video, cropX, cropY, cropSize, cropSize, 0, 0, cropSize, cropSize);
 
           try {
-            // qr-scanner WASM 디코더 호출 (슈퍼 샘플링 확대 캔버스 대상)
+            // qr-scanner WASM 디코더 호출
             const result = await QrScanner.scanImage(canvas, {
               returnDetailedScanResult: true,
             });
@@ -456,9 +404,9 @@ export const Scanner: React.FC<ScannerProps> = ({
           >
             <div
               style={{
-                width: '190px',
-                height: '190px',
-                border: '2px solid rgba(16, 185, 129, 0.6)',
+                width: '220px',
+                height: '220px',
+                border: '2px solid rgba(16, 185, 129, 0.7)',
                 borderRadius: '16px',
                 boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.45)',
                 position: 'relative',
@@ -476,14 +424,13 @@ export const Scanner: React.FC<ScannerProps> = ({
                 color: '#34d399',
                 padding: '6px 14px',
                 borderRadius: '8px',
-                fontSize: '12px',
+                fontSize: '13px',
                 fontWeight: 'bold',
                 border: '1px solid rgba(52, 211, 153, 0.4)',
                 boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
-                letterSpacing: '0.2px',
               }}
             >
-              📐 10~20cm 거리에서 사각형 안에 맞춰주세요 (가까이 대지 마세요)
+              QR코드를 사각형 안에 비춰주세요
             </span>
           </div>
         )}

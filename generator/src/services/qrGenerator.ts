@@ -62,8 +62,8 @@ export class QRGeneratorEngine {
       const qrcodeModule: any = typeof (QRCode as any).toBuffer === 'function' ? QRCode : (QRCode as any).default || QRCode;
       const qrBuffer = await qrcodeModule.toBuffer(payloadString, {
         width: 300,
-        margin: 1,
-        errorCorrectionLevel: 'L',
+        margin: 2,
+        errorCorrectionLevel: 'M',
         color: { dark: '#000000', light: '#FFFFFF' },
       });
 
