@@ -34,7 +34,7 @@ export class ManifestExporter {
         fs.mkdirSync(sheetDirPath, { recursive: true });
       }
 
-      // (1) 탭 폴더 내 manifest_list.txt
+      // (1) 탭 폴더 내 manifest_list.txt (인적 정보)
       const subListHeaders = ['이사회명', '직함', '성명'];
       const subListRows = sheetRecords.map((rec) => [
         rec.affiliation,
@@ -58,9 +58,28 @@ export class ManifestExporter {
         ...subQrRows.map((row) => row.join('\t')),
       ].join('\r\n');
       fs.writeFileSync(path.join(sheetDirPath, 'manifest_qr.txt'), Buffer.from(utf16leBom + subQrContent, 'utf16le'));
+
+      // (3) 탭 폴더 내 manifest_master.txt (모든 정보 총망라 마스터 매니페스트)
+      const subMasterHeaders = ['일련번호', '이사회명', '직함', '성명', '티셔츠사이즈', '#QR코드', '시트명', '생성시각'];
+      const subMasterRows = sheetRecords.map((rec) => [
+        rec.managementNumber || '',
+        rec.affiliation,
+        rec.title,
+        rec.name,
+        rec.tshirtSize || '',
+        rec.fileName,
+        rec.sheetName || '',
+        rec.createdAt || '',
+      ]);
+      const subMasterContent = [
+        subMasterHeaders.join('\t'),
+        ...subMasterRows.map((row) => row.join('\t')),
+      ].join('\r\n');
+      fs.writeFileSync(path.join(sheetDirPath, 'manifest_master.txt'), Buffer.from(utf16leBom + subMasterContent, 'utf16le'));
     }
 
     // 3. 루트 폴더: 전체 통합 매니페스트 생성
+    // (1) 루트 manifest_list.txt
     const listHeaders = ['이사회명', '직함', '성명'];
     const listRows = records.map((rec) => [
       rec.affiliation,
@@ -74,7 +93,7 @@ export class ManifestExporter {
     const listManifestPath = path.join(outputDir, 'manifest_list.txt');
     fs.writeFileSync(listManifestPath, Buffer.from(utf16leBom + listContent, 'utf16le'));
 
-    // 루트 manifest_qr.txt (서브 폴더 상대경로: 서울/200001.png)
+    // (2) 루트 manifest_qr.txt (서브 폴더 상대경로: 서울/200001.png)
     const qrHeaders = ['일련번호', '#QR코드'];
     const qrRows = records.map((rec) => [
       rec.managementNumber || '',
@@ -87,9 +106,29 @@ export class ManifestExporter {
     const qrManifestPath = path.join(outputDir, 'manifest_qr.txt');
     fs.writeFileSync(qrManifestPath, Buffer.from(utf16leBom + qrContent, 'utf16le'));
 
+    // (3) 루트 manifest_master.txt (모든 정보 총망라 통합 마스터 매니페스트)
+    const masterHeaders = ['일련번호', '이사회명', '직함', '성명', '티셔츠사이즈', '#QR코드', '시트명', '생성시각'];
+    const masterRows = records.map((rec) => [
+      rec.managementNumber || '',
+      rec.affiliation,
+      rec.title,
+      rec.name,
+      rec.tshirtSize || '',
+      rec.sheetName ? `${rec.sheetName}/${rec.fileName}` : rec.fileName,
+      rec.sheetName || '',
+      rec.createdAt || '',
+    ]);
+    const masterContent = [
+      masterHeaders.join('\t'),
+      ...masterRows.map((row) => row.join('\t')),
+    ].join('\r\n');
+    const masterManifestPath = path.join(outputDir, 'manifest_master.txt');
+    fs.writeFileSync(masterManifestPath, Buffer.from(utf16leBom + masterContent, 'utf16le'));
+
     return {
       listManifestPath,
       qrManifestPath,
+      masterManifestPath,
     };
   }
 

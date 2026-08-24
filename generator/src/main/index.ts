@@ -171,13 +171,14 @@ ipcMain.handle(
         }
       );
 
-      const { listManifestPath, qrManifestPath } = ManifestExporter.exportDualTxt(manifestRecords, outputDir);
+      const { listManifestPath, qrManifestPath, masterManifestPath } = ManifestExporter.exportDualTxt(manifestRecords, outputDir);
 
       return {
         success: true,
-        manifestPath: listManifestPath,
+        manifestPath: masterManifestPath,
         listManifestPath,
         qrManifestPath,
+        masterManifestPath,
         count: manifestRecords.length,
       };
     } catch (error: any) {

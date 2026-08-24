@@ -58,11 +58,12 @@ export interface ManifestRecord {
 }
 
 /**
- * 이원화 매니페스트 (Dual Manifest) 파일 경로 결과
+ * 매니페스트 (InDesign Dual & Master Manifest) 파일 경로 결과
  */
 export interface DualManifestPaths {
-  listManifestPath: string; // manifest_list.txt (인적 정보)
-  qrManifestPath: string;   // manifest_qr.txt (QR 매핑 정보)
+  listManifestPath: string;   // manifest_list.txt (인적 정보)
+  qrManifestPath: string;     // manifest_qr.txt (QR 매핑 정보)
+  masterManifestPath: string; // manifest_master.txt (전체 정보 통합 마스터)
 }
 
 /**

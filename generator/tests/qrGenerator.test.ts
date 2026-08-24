@@ -69,7 +69,7 @@ describe('QRGeneratorEngine 관할지역 탭별 폴더 생성 & 듀얼 매니페
     expect(payload.id).toBe('200001');
   });
 
-  test('InDesign 호환 듀얼 매니페스트가 루트 폴더 및 탭별 서브 폴더에 정상 생성된다', () => {
+  test('InDesign 호환 듀얼 매니페스트 및 전체 정보 통합 마스터 매니페스트(manifest_master.txt)가 정상 생성된다', () => {
     const outputDir = testDirs[1];
     const sampleManifest = [
       {
@@ -104,11 +104,12 @@ describe('QRGeneratorEngine 관할지역 탭별 폴더 생성 & 듀얼 매니페
       },
     ];
 
-    const { listManifestPath, qrManifestPath } = ManifestExporter.exportDualTxt(sampleManifest, outputDir);
+    const { listManifestPath, qrManifestPath, masterManifestPath } = ManifestExporter.exportDualTxt(sampleManifest, outputDir);
 
     // 1. 루트 폴더 매니페스트 검증
     expect(fs.existsSync(listManifestPath)).toBe(true);
     expect(fs.existsSync(qrManifestPath)).toBe(true);
+    expect(fs.existsSync(masterManifestPath)).toBe(true);
 
     const listBuffer = fs.readFileSync(listManifestPath);
     const listStr = listBuffer.toString('utf16le');
@@ -122,16 +123,26 @@ describe('QRGeneratorEngine 관할지역 탭별 폴더 생성 & 듀얼 매니페
     expect(qrStr).toContain('200001\t서울/200001.png');
     expect(qrStr).toContain('310001\t경기/310001.png');
 
+    // 루트 마스터 매니페스트 검증 (모든 컬럼 포함)
+    const masterBuffer = fs.readFileSync(masterManifestPath);
+    const masterStr = masterBuffer.toString('utf16le');
+    expect(masterStr).toContain('일련번호\t이사회명\t직함\t성명\t티셔츠사이즈\t#QR코드\t시트명\t생성시각');
+    expect(masterStr).toContain('200001\t서울동대문후원이사회\t회장\t홍길동\t105\t서울/200001.png\t서울\t2026-08-24 09:00:00');
+    expect(masterStr).toContain('310001\t고양후원이사회\t이사\t이순신\t100\t경기/310001.png\t경기\t2026-08-24 09:00:00');
+
     // 2. 탭별 서브 폴더 매니페스트 검증
     const seoulListPath = path.join(outputDir, '서울', 'manifest_list.txt');
     const seoulQrPath = path.join(outputDir, '서울', 'manifest_qr.txt');
+    const seoulMasterPath = path.join(outputDir, '서울', 'manifest_master.txt');
     expect(fs.existsSync(seoulListPath)).toBe(true);
     expect(fs.existsSync(seoulQrPath)).toBe(true);
+    expect(fs.existsSync(seoulMasterPath)).toBe(true);
 
-    const seoulQrStr = fs.readFileSync(seoulQrPath).toString('utf16le');
-    expect(seoulQrStr).toContain('200001\t200001.png');
-    expect(seoulQrStr).toContain('200002\t200002.png');
-    expect(seoulQrStr).not.toContain('310001');
+    const seoulMasterStr = fs.readFileSync(seoulMasterPath).toString('utf16le');
+    expect(seoulMasterStr).toContain('일련번호\t이사회명\t직함\t성명\t티셔츠사이즈\t#QR코드\t시트명\t생성시각');
+    expect(seoulMasterStr).toContain('200001\t서울동대문후원이사회\t회장\t홍길동\t105\t200001.png\t서울');
+    expect(seoulMasterStr).toContain('200002\t서울서대문후원이사회\t사모\t김영희\t95\t200002.png\t서울');
+    expect(seoulMasterStr).not.toContain('310001');
   });
 
   test('QRVerifier가 탭별 서브 폴더 내의 PNG 이미지들을 성공적으로 전수 검증한다', async () => {

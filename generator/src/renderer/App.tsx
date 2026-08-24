@@ -55,6 +55,7 @@ export function App() {
     manifestPath: string;
     listManifestPath?: string;
     qrManifestPath?: string;
+    masterManifestPath?: string;
     outputDir: string;
     attendees?: AttendeeInput[];
   } | null>(null);
@@ -222,9 +223,10 @@ export function App() {
       if (res.success) {
         setCompletedResult({
           count: res.count,
-          manifestPath: res.manifestPath,
+          manifestPath: res.masterManifestPath || res.manifestPath,
           listManifestPath: res.listManifestPath || `${outputDir}\\manifest_list.txt`,
           qrManifestPath: res.qrManifestPath || `${outputDir}\\manifest_qr.txt`,
+          masterManifestPath: res.masterManifestPath || `${outputDir}\\manifest_master.txt`,
           outputDir,
           attendees: validationResult.attendees,
         });
@@ -246,9 +248,10 @@ export function App() {
       }
       setCompletedResult({
         count: validationResult.attendees.length,
-        manifestPath: `${outputDir}\\manifest_list.txt`,
+        manifestPath: `${outputDir}\\manifest_master.txt`,
         listManifestPath: `${outputDir}\\manifest_list.txt`,
         qrManifestPath: `${outputDir}\\manifest_qr.txt`,
+        masterManifestPath: `${outputDir}\\manifest_master.txt`,
         outputDir,
         attendees: validationResult.attendees,
       });
@@ -387,9 +390,10 @@ export function App() {
         setCompletedResult({
           count: attendeesToGenerate.length,
           outputDir: singleOutputDir,
-          manifestPath: res.manifestPath,
+          manifestPath: res.masterManifestPath || res.manifestPath,
           listManifestPath: res.listManifestPath || `${singleOutputDir}\\manifest_list.txt`,
           qrManifestPath: res.qrManifestPath || `${singleOutputDir}\\manifest_qr.txt`,
+          masterManifestPath: res.masterManifestPath || `${singleOutputDir}\\manifest_master.txt`,
           attendees: attendeesToGenerate,
         });
         setStep(4);
@@ -400,9 +404,10 @@ export function App() {
       setCompletedResult({
         count: attendeesToGenerate.length,
         outputDir: singleOutputDir,
-        manifestPath: `${singleOutputDir}\\manifest_list.txt`,
+        manifestPath: `${singleOutputDir}\\manifest_master.txt`,
         listManifestPath: `${singleOutputDir}\\manifest_list.txt`,
         qrManifestPath: `${singleOutputDir}\\manifest_qr.txt`,
+        masterManifestPath: `${singleOutputDir}\\manifest_master.txt`,
         attendees: attendeesToGenerate,
       });
       setStep(4);
@@ -535,7 +540,7 @@ export function App() {
               QR코드 생성 완료!
             </h2>
             <p className="subtitle" style={{ marginBottom: '20px' }}>
-              총 {completedResult.count}건의 QR 이미지(PNG) 및 InDesign 이원화 매니페스트가 정상 저장되었습니다.
+              총 {completedResult.count}건의 QR 이미지(PNG) 및 InDesign 듀얼·통합 마스터 매니페스트가 정상 저장되었습니다.
             </p>
 
             <div className="stat-grid" style={{ marginBottom: '20px' }}>
@@ -544,8 +549,9 @@ export function App() {
                 <div className="stat-value">{completedResult.count} 건</div>
               </div>
               <div className="stat-item">
-                <div className="stat-label">InDesign 듀얼 매니페스트</div>
+                <div className="stat-label">InDesign & 통합 매니페스트 (3종)</div>
                 <div className="stat-value" style={{ fontSize: '13px', lineHeight: '1.5', textAlign: 'left' }}>
+                  <div>📄 <strong>manifest_master.txt</strong> (전체 정보 통합 마스터)</div>
                   <div>📄 <strong>manifest_list.txt</strong> (명단 정보)</div>
                   <div>📄 <strong>manifest_qr.txt</strong> (QR 매핑)</div>
                 </div>
