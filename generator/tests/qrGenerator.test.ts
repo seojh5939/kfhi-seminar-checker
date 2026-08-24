@@ -4,111 +4,155 @@ import jsQR from 'jsqr';
 import { PNG } from 'pngjs';
 import { QRGeneratorEngine } from '../src/services/qrGenerator';
 import { ManifestExporter } from '../src/services/manifestExporter';
+import { QRVerifier } from '../src/services/qrVerifier';
 import { CryptoEngine, AttendeeInput } from 'shared';
 
-describe('QRGeneratorEngine 대량 생성 및 이미지 디코딩 무결성 유닛 테스트 (v1.1)', () => {
-  const testOutputDir = path.join(__dirname, 'temp_qr_output');
+describe('QRGeneratorEngine 관할지역 탭별 폴더 생성 & 듀얼 매니페스트 대량 생성 유닛 테스트 (v1.5)', () => {
   const secretKey = 'kfhi-seminar-checker-secret-32b';
   const generatorEngine = new QRGeneratorEngine(secretKey);
   const cryptoEngine = new CryptoEngine(secretKey);
 
+  const testDirs = [
+    path.join(__dirname, 'temp_qr_output_1'),
+    path.join(__dirname, 'temp_qr_output_2'),
+    path.join(__dirname, 'temp_qr_output_3'),
+  ];
+
   afterAll(() => {
-    // 테스트 완료 후 임시 디렉터리 정리
-    if (fs.existsSync(testOutputDir)) {
-      fs.rmSync(testOutputDir, { recursive: true, force: true });
+    for (const dir of testDirs) {
+      if (fs.existsSync(dir)) {
+        try {
+          fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+        } catch {
+          // ignore
+        }
+      }
     }
   });
 
-  test('생성된 평문 및 암호화 QR PNG 이미지를 디코딩하여 원본 정보와 100% 일치함을 검증한다', async () => {
-    const dummyAttendee: AttendeeInput = {
-      name: '홍길동',
-      affiliation: '서울후원이사회',
-      title: '회장',
-      tshirtSize: '105',
-      isSpouse: false,
-    };
+  test('서울 탭(02->20) 및 경기 탭(031->31) 참석자에 대해 탭별 폴더와 {일련번호}.png를 생성한다', async () => {
+    const outputDir = testDirs[0];
+    const attendees: AttendeeInput[] = [
+      { name: '홍길동', affiliation: '서울동대문후원이사회', title: '회장', tshirtSize: '105', sheetName: '서울' },
+      { name: '김철수', affiliation: '서울서대문후원이사회', title: '총무', tshirtSize: '100', sheetName: '서울' },
+      { name: '이순신', affiliation: '고양후원이사회', title: '이사', tshirtSize: '100', sheetName: '경기' },
+    ];
 
-    // 1. 평문 QR 생성 검증
-    const manifest = await generatorEngine.generateBulk([dummyAttendee], testOutputDir, false);
-    expect(manifest).toHaveLength(1);
+    const records = await generatorEngine.generateBulk(attendees, outputDir, false);
 
-    const expectedFileName = '서울후원이사회_회장_홍길동.png';
-    const qrFilePath = path.join(testOutputDir, expectedFileName);
-    expect(fs.existsSync(qrFilePath)).toBe(true);
+    expect(records).toHaveLength(3);
+    // 서울 동대문 1번 -> 200001
+    expect(records[0].managementNumber).toBe('200001');
+    expect(records[0].fileName).toBe('200001.png');
+    expect(records[0].sheetName).toBe('서울');
+    // 서울 서대문 1번 (서울 권역 2번) -> 200002
+    expect(records[1].managementNumber).toBe('200002');
+    expect(records[1].sheetName).toBe('서울');
+    // 경기 고양 1번 (경기 권역 1번) -> 310001
+    expect(records[2].managementNumber).toBe('310001');
+    expect(records[2].sheetName).toBe('경기');
 
-    const buffer = fs.readFileSync(qrFilePath);
-    const png = PNG.sync.read(buffer);
-    const code = jsQR(new Uint8ClampedArray(png.data), png.width, png.height);
-    expect(code).not.toBeNull();
-    expect(code?.data).toBeDefined();
+    // 탭별 폴더 생성 및 이미지 저장 확인
+    expect(fs.existsSync(path.join(outputDir, '서울', '200001.png'))).toBe(true);
+    expect(fs.existsSync(path.join(outputDir, '서울', '200002.png'))).toBe(true);
+    expect(fs.existsSync(path.join(outputDir, '경기', '310001.png'))).toBe(true);
 
-    const payload = cryptoEngine.decryptToPayload(code!.data);
-    expect(payload.n).toBe(dummyAttendee.name);
-    expect(payload.a).toBe(dummyAttendee.affiliation);
-    expect(payload.t).toBe(dummyAttendee.title);
-    expect(payload.s).toBe(dummyAttendee.tshirtSize);
-  });
-
-  test('사모님 QR 코드 파일명 및 데이터 분리 생성을 검증한다', async () => {
-    const spouseAttendee: AttendeeInput = {
-      name: '김영희',
-      affiliation: '서울후원이사회',
-      title: '사모',
-      tshirtSize: '95',
-      isSpouse: true,
-    };
-
-    const manifest = await generatorEngine.generateBulk([spouseAttendee], testOutputDir, false);
-    expect(manifest).toHaveLength(1);
-
-    const expectedFileName = '서울후원이사회_사모_김영희.png';
-    const qrFilePath = path.join(testOutputDir, expectedFileName);
-    expect(fs.existsSync(qrFilePath)).toBe(true);
-
-    const buffer = fs.readFileSync(qrFilePath);
+    // QR 디코딩 및 페이로드 id(일련번호) 확인
+    const buffer = fs.readFileSync(path.join(outputDir, '서울', '200001.png'));
     const png = PNG.sync.read(buffer);
     const code = jsQR(new Uint8ClampedArray(png.data), png.width, png.height);
     expect(code).not.toBeNull();
 
     const payload = cryptoEngine.decryptToPayload(code!.data);
-    expect(payload.n).toBe('김영희');
-    expect(payload.t).toBe('사모');
-    expect(payload.s).toBe('95');
+    expect(payload.n).toBe('홍길동');
+    expect(payload.a).toBe('서울동대문후원이사회');
+    expect(payload.id).toBe('200001');
   });
 
-  test('매니페스트 TXT 파일이 InDesign 호환 UTF-16 LE 탭 구분으로 정상 내보내기된다', () => {
+  test('InDesign 호환 듀얼 매니페스트가 루트 폴더 및 탭별 서브 폴더에 정상 생성된다', () => {
+    const outputDir = testDirs[1];
     const sampleManifest = [
       {
-        affiliation: '서울후원이사회',
+        managementNumber: '200001',
+        affiliation: '서울동대문후원이사회',
         title: '회장',
         name: '홍길동',
         tshirtSize: '105',
-        fileName: '서울후원이사회_회장_홍길동.png',
-        createdAt: '2026-08-20 09:00:00',
+        fileName: '200001.png',
+        createdAt: '2026-08-24 09:00:00',
+        sheetName: '서울',
       },
       {
-        affiliation: '서울후원이사회',
+        managementNumber: '200002',
+        affiliation: '서울서대문후원이사회',
         title: '사모',
         name: '김영희',
         tshirtSize: '95',
-        fileName: '서울후원이사회_사모_김영희.png',
-        createdAt: '2026-08-20 09:00:00',
+        fileName: '200002.png',
+        createdAt: '2026-08-24 09:00:00',
+        sheetName: '서울',
+      },
+      {
+        managementNumber: '310001',
+        affiliation: '고양후원이사회',
+        title: '이사',
+        name: '이순신',
+        tshirtSize: '100',
+        fileName: '310001.png',
+        createdAt: '2026-08-24 09:00:00',
+        sheetName: '경기',
       },
     ];
 
-    const txtPath = path.join(testOutputDir, 'manifest.txt');
-    ManifestExporter.exportToTxt(sampleManifest, txtPath);
+    const { listManifestPath, qrManifestPath } = ManifestExporter.exportDualTxt(sampleManifest, outputDir);
 
-    expect(fs.existsSync(txtPath)).toBe(true);
-    const buffer = fs.readFileSync(txtPath);
-    // UTF-16 LE BOM (\uFEFF -> Buffer: 0xFF, 0xFE) 검증
-    expect(buffer[0]).toBe(0xff);
-    expect(buffer[1]).toBe(0xfe);
+    // 1. 루트 폴더 매니페스트 검증
+    expect(fs.existsSync(listManifestPath)).toBe(true);
+    expect(fs.existsSync(qrManifestPath)).toBe(true);
 
-    // Adobe InDesign 데이터 병합 호환 탭 구분 헤더 [이사회명, 직함, 성명, #QR코드] 검증
-    const txtString = buffer.toString('utf16le');
-    expect(txtString).toContain('이사회명\t직함\t성명\t#QR코드');
-    expect(txtString).toContain('서울후원이사회\t회장\t홍길동\t서울후원이사회_회장_홍길동.png');
-    expect(txtString).toContain('서울후원이사회\t사모\t김영희\t서울후원이사회_사모_김영희.png');
+    const listBuffer = fs.readFileSync(listManifestPath);
+    const listStr = listBuffer.toString('utf16le');
+    expect(listStr).toContain('이사회명\t직함\t성명');
+    expect(listStr).toContain('서울동대문후원이사회\t회장\t홍길동');
+    expect(listStr).not.toContain('일련번호');
+
+    const qrBuffer = fs.readFileSync(qrManifestPath);
+    const qrStr = qrBuffer.toString('utf16le');
+    expect(qrStr).toContain('일련번호\t#QR코드');
+    expect(qrStr).toContain('200001\t서울/200001.png');
+    expect(qrStr).toContain('310001\t경기/310001.png');
+
+    // 2. 탭별 서브 폴더 매니페스트 검증
+    const seoulListPath = path.join(outputDir, '서울', 'manifest_list.txt');
+    const seoulQrPath = path.join(outputDir, '서울', 'manifest_qr.txt');
+    expect(fs.existsSync(seoulListPath)).toBe(true);
+    expect(fs.existsSync(seoulQrPath)).toBe(true);
+
+    const seoulQrStr = fs.readFileSync(seoulQrPath).toString('utf16le');
+    expect(seoulQrStr).toContain('200001\t200001.png');
+    expect(seoulQrStr).toContain('200002\t200002.png');
+    expect(seoulQrStr).not.toContain('310001');
+  });
+
+  test('QRVerifier가 탭별 서브 폴더 내의 PNG 이미지들을 성공적으로 전수 검증한다', async () => {
+    const outputDir = testDirs[2];
+    const attendees: AttendeeInput[] = [
+      { name: '홍길동', affiliation: '서울동대문후원이사회', title: '회장', tshirtSize: '105', sheetName: '서울' },
+      { name: '김영희', affiliation: '서울서대문후원이사회', title: '사모', tshirtSize: '95', isSpouse: true, sheetName: '서울' },
+      { name: '이순신', affiliation: '고양후원이사회', title: '이사', tshirtSize: '100', sheetName: '경기' },
+    ];
+
+    const records = await generatorEngine.generateBulk(attendees, outputDir, true);
+    ManifestExporter.exportDualTxt(records, outputDir);
+
+    const verifier = new QRVerifier(secretKey);
+    const summary = await verifier.verifyOutputDir(outputDir);
+
+    expect(summary.total).toBe(3);
+    expect(summary.successCount).toBe(3);
+    expect(summary.failCount).toBe(0);
+    expect(summary.items[0].status).toBe('success');
+    expect(summary.items[0].managementNumber).toBe('200001');
+    expect(summary.items[2].managementNumber).toBe('310001');
   });
 });

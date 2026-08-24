@@ -1,5 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { AttendeeInput, ValidationErrorItem, ColumnMapping, ExcelHeaderInfo } from 'shared';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  AttendeeInput,
+  ValidationErrorItem,
+  ColumnMapping,
+  ExcelHeaderInfo,
+  resolveRegionCode,
+} from 'shared';
 import kfhiLogo from '../assets/kfhi-logo.png';
 import appPackageJson from '../../package.json';
 
@@ -47,6 +53,8 @@ export function App() {
   const [completedResult, setCompletedResult] = useState<{
     count: number;
     manifestPath: string;
+    listManifestPath?: string;
+    qrManifestPath?: string;
     outputDir: string;
     attendees?: AttendeeInput[];
   } | null>(null);
@@ -58,6 +66,7 @@ export function App() {
     successCount: number;
     failCount: number;
     items: Array<{
+      managementNumber?: string;
       affiliation: string;
       title: string;
       name: string;
@@ -214,6 +223,8 @@ export function App() {
         setCompletedResult({
           count: res.count,
           manifestPath: res.manifestPath,
+          listManifestPath: res.listManifestPath || `${outputDir}\\manifest_list.txt`,
+          qrManifestPath: res.qrManifestPath || `${outputDir}\\manifest_qr.txt`,
           outputDir,
           attendees: validationResult.attendees,
         });
@@ -235,7 +246,9 @@ export function App() {
       }
       setCompletedResult({
         count: validationResult.attendees.length,
-        manifestPath: `${outputDir}\\manifest.txt`,
+        manifestPath: `${outputDir}\\manifest_list.txt`,
+        listManifestPath: `${outputDir}\\manifest_list.txt`,
+        qrManifestPath: `${outputDir}\\manifest_qr.txt`,
         outputDir,
         attendees: validationResult.attendees,
       });
@@ -263,26 +276,35 @@ export function App() {
       }
     } else {
       // Mock verification
+      const regionCounters = new Map<string, number>();
       setVerificationSummary({
         total: completedResult.count,
         successCount: completedResult.count,
         failCount: 0,
-        items: (completedResult.attendees || []).map((a) => ({
-          affiliation: a.affiliation,
-          title: a.title,
-          name: a.name,
-          tshirtSize: a.tshirtSize,
-          fileName: `${a.affiliation}_${a.title}_${a.name}.png`,
-          status: 'success' as const,
-          decryptedPayload: {
-            v: 2,
-            a: a.affiliation,
-            t: a.title,
-            n: a.name,
-            s: a.tshirtSize || '',
-            ts: Date.now(),
-          },
-        })),
+        items: (completedResult.attendees || []).map((a) => {
+          const regionCode = resolveRegionCode(a.affiliation);
+          const nextSeq = (regionCounters.get(regionCode) || 0) + 1;
+          regionCounters.set(regionCode, nextSeq);
+          const serialNumber = `${regionCode}${String(nextSeq).padStart(4, '0')}`;
+          return {
+            managementNumber: serialNumber,
+            affiliation: a.affiliation,
+            title: a.title,
+            name: a.name,
+            tshirtSize: a.tshirtSize,
+            fileName: `${serialNumber}.png`,
+            status: 'success' as const,
+            decryptedPayload: {
+              v: 2,
+              id: serialNumber,
+              a: a.affiliation,
+              t: a.title,
+              n: a.name,
+              s: a.tshirtSize || '',
+              ts: Date.now(),
+            },
+          };
+        }),
       });
     }
     setIsVerifying(false);
@@ -366,6 +388,8 @@ export function App() {
           count: attendeesToGenerate.length,
           outputDir: singleOutputDir,
           manifestPath: res.manifestPath,
+          listManifestPath: res.listManifestPath || `${singleOutputDir}\\manifest_list.txt`,
+          qrManifestPath: res.qrManifestPath || `${singleOutputDir}\\manifest_qr.txt`,
           attendees: attendeesToGenerate,
         });
         setStep(4);
@@ -376,7 +400,9 @@ export function App() {
       setCompletedResult({
         count: attendeesToGenerate.length,
         outputDir: singleOutputDir,
-        manifestPath: `${singleOutputDir}\\manifest.txt`,
+        manifestPath: `${singleOutputDir}\\manifest_list.txt`,
+        listManifestPath: `${singleOutputDir}\\manifest_list.txt`,
+        qrManifestPath: `${singleOutputDir}\\manifest_qr.txt`,
         attendees: attendeesToGenerate,
       });
       setStep(4);
@@ -407,6 +433,27 @@ export function App() {
   const spouseCount = validationResult?.attendees.filter((a) => a.isSpouse).length || 0;
   const primaryCount = (validationResult?.attendees.length || 0) - spouseCount;
   const uniqueAffiliations = new Set(validationResult?.attendees.map((a) => a.affiliation) || []).size;
+
+  // 권역별 누적 순번이 적용된 미리보기 명단 목록 (v1.5)
+  const previewAttendees = useMemo(() => {
+    if (!validationResult?.attendees) return [];
+    const regionCounters = new Map<string, number>();
+    return validationResult.attendees.map((att) => {
+      let serialNumber = att.managementNumber;
+      if (!serialNumber || !/^\d{5,6}$/.test(serialNumber)) {
+        const regionCode = resolveRegionCode(att.affiliation);
+        const nextSeq = (regionCounters.get(regionCode) || 0) + 1;
+        regionCounters.set(regionCode, nextSeq);
+        serialNumber = `${regionCode}${String(nextSeq).padStart(4, '0')}`;
+      }
+      const fileName = `${serialNumber}.png`;
+      return {
+        ...att,
+        serialNumber,
+        fileName,
+      };
+    });
+  }, [validationResult?.attendees]);
 
   return (
     <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh', width: '100%', backgroundColor: customBg ? 'transparent' : '#0f172a' }}>
@@ -464,7 +511,7 @@ export function App() {
                 행사 출입관리 QR코드 생성기
               </h1>
               <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#cbd5e1' }}>
-                동적 헤더 인식 · 사모님 분리 생성 · InDesign Data Merge 지원 (v1.1)
+                동적 헤더 인식 · 사모님 분리 생성 · InDesign Data Merge 지원 (v1.5)
               </p>
             </div>
           </div>
@@ -488,7 +535,7 @@ export function App() {
               QR코드 생성 완료!
             </h2>
             <p className="subtitle" style={{ marginBottom: '20px' }}>
-              총 {completedResult.count}건의 QR 이미지(PNG) 및 InDesign 매니페스트(manifest.txt)가 정상 저장되었습니다.
+              총 {completedResult.count}건의 QR 이미지(PNG) 및 InDesign 이원화 매니페스트가 정상 저장되었습니다.
             </p>
 
             <div className="stat-grid" style={{ marginBottom: '20px' }}>
@@ -497,9 +544,10 @@ export function App() {
                 <div className="stat-value">{completedResult.count} 건</div>
               </div>
               <div className="stat-item">
-                <div className="stat-label">매니페스트 파일</div>
-                <div className="stat-value" style={{ fontSize: '14px', wordBreak: 'break-all' }}>
-                  manifest.txt (InDesign Data Merge)
+                <div className="stat-label">InDesign 듀얼 매니페스트</div>
+                <div className="stat-value" style={{ fontSize: '13px', lineHeight: '1.5', textAlign: 'left' }}>
+                  <div>📄 <strong>manifest_list.txt</strong> (명단 정보)</div>
+                  <div>📄 <strong>manifest_qr.txt</strong> (QR 매핑)</div>
                 </div>
               </div>
             </div>
@@ -549,6 +597,7 @@ export function App() {
                   <table>
                     <thead>
                       <tr>
+                        <th>일련번호</th>
                         <th>이사회명</th>
                         <th>직책</th>
                         <th>성명</th>
@@ -561,11 +610,16 @@ export function App() {
                     <tbody>
                       {verificationSummary.items.map((item, idx) => (
                         <tr key={idx}>
+                          <td style={{ fontWeight: 700, color: 'var(--accent-cyan)', fontFamily: 'monospace' }}>
+                            {item.managementNumber || '-'}
+                          </td>
                           <td style={{ fontWeight: 600 }}>{item.affiliation}</td>
                           <td>{item.title}</td>
                           <td>{item.name}</td>
                           <td>{item.tshirtSize || '-'}</td>
-                          <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{item.fileName}</td>
+                          <td style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                            {item.fileName}
+                          </td>
                           <td>
                             {item.status === 'success' ? (
                               <span className="badge badge-success" style={{ padding: '2px 8px', fontSize: '11px' }}>
@@ -580,7 +634,7 @@ export function App() {
                           <td className="allow-wrap" style={{ fontSize: '12px', fontFamily: 'monospace' }}>
                             {item.status === 'success' && item.decryptedPayload ? (
                               <span style={{ color: '#a5f3fc' }}>
-                                {`[${item.decryptedPayload.a}] ${item.decryptedPayload.t} ${item.decryptedPayload.n} (사이즈: ${item.decryptedPayload.s || '미지정'})`}
+                                {`[${item.decryptedPayload.id || item.managementNumber}] ${item.decryptedPayload.a} ${item.decryptedPayload.t} ${item.decryptedPayload.n}`}
                               </span>
                             ) : (
                               <span style={{ color: 'var(--error-color)' }}>{item.failReason}</span>
@@ -951,17 +1005,21 @@ export function App() {
                       <table>
                         <thead>
                           <tr>
+                            <th>일련번호</th>
                             <th>구분</th>
                             <th>이사회명</th>
                             <th>직책</th>
                             <th>성명</th>
                             <th>티셔츠사이즈</th>
-                            <th>생성 파일명 규칙</th>
+                            <th>생성 파일명</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {validationResult.attendees.map((att, idx) => (
+                          {previewAttendees.map((att, idx) => (
                             <tr key={idx}>
+                              <td style={{ fontWeight: 700, color: 'var(--accent-cyan)', fontFamily: 'monospace' }}>
+                                {att.serialNumber}
+                              </td>
                               <td>
                                 {att.isSpouse ? (
                                   <span style={{ backgroundColor: '#be185d', color: 'white', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
@@ -977,8 +1035,8 @@ export function App() {
                               <td>{att.title}</td>
                               <td>{att.name}</td>
                               <td>{att.tshirtSize || '-'}</td>
-                              <td style={{ fontSize: '12px', color: '#94a3b8', fontFamily: 'monospace' }}>
-                                {`${att.affiliation}_${att.title}_${att.name}.png`}
+                              <td style={{ fontSize: '12px', color: '#38bdf8', fontFamily: 'monospace' }}>
+                                {att.fileName}
                               </td>
                             </tr>
                           ))}

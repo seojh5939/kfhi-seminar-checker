@@ -11,7 +11,8 @@ export interface AttendeeInput {
   title: TitleType;         // 직책/직함 (본인 직책 또는 "사모")
   tshirtSize?: string;      // 티셔츠 사이즈 (예: "100", "XL", "L", "95" 등)
   isSpouse?: boolean;       // 사모님 여부
-  managementNumber?: string;// 구버전 호환용 5자리 관리번호 (optional)
+  managementNumber?: string;// 6자리 관리번호/일련번호 (optional)
+  sheetName?: string;       // 엑셀 탭(시트) 제목 (예: "서울", "경기")
 }
 
 /**
@@ -43,16 +44,25 @@ export interface ScanRecord {
 }
 
 /**
- * 생성기 매니페스트 (InDesign Data Merge) 기록 인터페이스
+ * 생성기 매니페스트 (InDesign Data Merge) 기록 인터페이스 (v1.5)
  */
 export interface ManifestRecord {
+  managementNumber: string; // 6자리 일련번호 (예: "200001")
   affiliation: string;      // 이사회명
   title: string;            // 직함
   name: string;             // 성명
-  tshirtSize: string;       // 티셔츠사이즈
-  fileName: string;         // 예: "서울후원이사회_회장_홍길동.png"
+  tshirtSize?: string;      // 티셔츠사이즈
+  fileName: string;         // 예: "200001.png"
   createdAt: string;        // 생성 시각 (YYYY-MM-DD-HH:mm:ss)
-  managementNumber?: string;// 하위 호환용
+  sheetName?: string;       // 엑셀 탭(시트) 제목
+}
+
+/**
+ * 이원화 매니페스트 (Dual Manifest) 파일 경로 결과
+ */
+export interface DualManifestPaths {
+  listManifestPath: string; // manifest_list.txt (인적 정보)
+  qrManifestPath: string;   // manifest_qr.txt (QR 매핑 정보)
 }
 
 /**

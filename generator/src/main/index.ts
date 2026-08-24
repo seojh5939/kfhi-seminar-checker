@@ -171,18 +171,21 @@ ipcMain.handle(
         }
       );
 
-      const manifestPath = path.join(outputDir, 'manifest.txt');
-      ManifestExporter.exportToTxt(manifestRecords, manifestPath);
+      const { listManifestPath, qrManifestPath } = ManifestExporter.exportDualTxt(manifestRecords, outputDir);
 
       return {
         success: true,
-        manifestPath,
+        manifestPath: listManifestPath,
+        listManifestPath,
+        qrManifestPath,
         count: manifestRecords.length,
       };
     } catch (error: any) {
       return {
         success: false,
         manifestPath: '',
+        listManifestPath: '',
+        qrManifestPath: '',
         count: 0,
         error: error.message || 'QR 코드 생성 중 오류가 발생했습니다.',
       };

@@ -21,6 +21,10 @@ export class CryptoEngine {
    */
   public toPlainPayloadString(attendee: AttendeeInput): string {
     const tshirt = attendee.tshirtSize || '';
+    const id = attendee.managementNumber || '';
+    if (id) {
+      return `v2|${attendee.affiliation}|${attendee.title}|${attendee.name}|${tshirt}|${id}`;
+    }
     return `v2|${attendee.affiliation}|${attendee.title}|${attendee.name}|${tshirt}`;
   }
 
@@ -143,18 +147,31 @@ export class CryptoEngine {
   }
 
   /**
-   * v2 평문 파싱: v2|affiliation|title|name|tshirt (신규 규격) 또는 v2|affiliation|title|name|tshirt|ts (구규격 하위호환)
+   * v2 평문 파싱: v2|affiliation|title|name|tshirt (신규 규격) 또는 v2|affiliation|title|name|tshirt|id (v1.5 일련번호 규격)
    */
   private parseV2Plain(str: string): QRPayload {
     const parts = str.split('|');
     if (parts.length < 4) {
       throw new Error('v2 QR 데이터 필드가 부족합니다.');
     }
-    const [vStr, a, t, n, s, tsStr] = parts;
+    const [vStr, a, t, n, s, extra1, extra2] = parts;
     const v = Number(vStr.replace(/^v/, '')) || 2;
-    const ts = tsStr ? Number(tsStr) : Date.now();
+    let id: string | undefined;
+    let ts = Date.now();
+
+    if (extra1) {
+      if (/^\d{5,6}$/.test(extra1)) {
+        id = extra1;
+        if (extra2) ts = Number(extra2) || Date.now();
+      } else {
+        ts = Number(extra1) || Date.now();
+        if (extra2) id = extra2;
+      }
+    }
+
     return {
       v,
+      id,
       a: a || '',
       t: t || '',
       n: n || '',
