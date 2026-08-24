@@ -123,12 +123,12 @@ describe('QRGeneratorEngine 관할지역 탭별 폴더 생성 & 듀얼 매니페
     expect(qrStr).toContain('200001\t서울/200001.png');
     expect(qrStr).toContain('310001\t경기/310001.png');
 
-    // 루트 마스터 매니페스트 검증 (모든 컬럼 포함)
+    // 루트 마스터 매니페스트 검증 (5개 핵심 컬럼: 일련번호, 이사회명, 직함, 성명, #QR코드)
     const masterBuffer = fs.readFileSync(masterManifestPath);
     const masterStr = masterBuffer.toString('utf16le');
-    expect(masterStr).toContain('일련번호\t이사회명\t직함\t성명\t티셔츠사이즈\t#QR코드\t시트명\t생성시각');
-    expect(masterStr).toContain('200001\t서울동대문후원이사회\t회장\t홍길동\t105\t서울/200001.png\t서울\t2026-08-24 09:00:00');
-    expect(masterStr).toContain('310001\t고양후원이사회\t이사\t이순신\t100\t경기/310001.png\t경기\t2026-08-24 09:00:00');
+    expect(masterStr).toContain('일련번호\t이사회명\t직함\t성명\t#QR코드');
+    expect(masterStr).toContain('200001\t서울동대문후원이사회\t회장\t홍길동\t서울/200001.png');
+    expect(masterStr).toContain('310001\t고양후원이사회\t이사\t이순신\t경기/310001.png');
 
     // 2. 탭별 서브 폴더 매니페스트 검증
     const seoulListPath = path.join(outputDir, '서울', 'manifest_list.txt');
@@ -139,9 +139,9 @@ describe('QRGeneratorEngine 관할지역 탭별 폴더 생성 & 듀얼 매니페
     expect(fs.existsSync(seoulMasterPath)).toBe(true);
 
     const seoulMasterStr = fs.readFileSync(seoulMasterPath).toString('utf16le');
-    expect(seoulMasterStr).toContain('일련번호\t이사회명\t직함\t성명\t티셔츠사이즈\t#QR코드\t시트명\t생성시각');
-    expect(seoulMasterStr).toContain('200001\t서울동대문후원이사회\t회장\t홍길동\t105\t200001.png\t서울');
-    expect(seoulMasterStr).toContain('200002\t서울서대문후원이사회\t사모\t김영희\t95\t200002.png\t서울');
+    expect(seoulMasterStr).toContain('일련번호\t이사회명\t직함\t성명\t#QR코드');
+    expect(seoulMasterStr).toContain('200001\t서울동대문후원이사회\t회장\t홍길동\t200001.png');
+    expect(seoulMasterStr).toContain('200002\t서울서대문후원이사회\t사모\t김영희\t200002.png');
     expect(seoulMasterStr).not.toContain('310001');
   });
 

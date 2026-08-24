@@ -59,17 +59,14 @@ export class ManifestExporter {
       ].join('\r\n');
       fs.writeFileSync(path.join(sheetDirPath, 'manifest_qr.txt'), Buffer.from(utf16leBom + subQrContent, 'utf16le'));
 
-      // (3) 탭 폴더 내 manifest_master.txt (모든 정보 총망라 마스터 매니페스트)
-      const subMasterHeaders = ['일련번호', '이사회명', '직함', '성명', '티셔츠사이즈', '#QR코드', '시트명', '생성시각'];
+      // (3) 탭 폴더 내 manifest_master.txt (InDesign 통합 마스터: 일련번호, 이사회명, 직함, 성명, #QR코드)
+      const subMasterHeaders = ['일련번호', '이사회명', '직함', '성명', '#QR코드'];
       const subMasterRows = sheetRecords.map((rec) => [
         rec.managementNumber || '',
         rec.affiliation,
         rec.title,
         rec.name,
-        rec.tshirtSize || '',
         rec.fileName,
-        rec.sheetName || '',
-        rec.createdAt || '',
       ]);
       const subMasterContent = [
         subMasterHeaders.join('\t'),
@@ -79,7 +76,7 @@ export class ManifestExporter {
     }
 
     // 3. 루트 폴더: 전체 통합 매니페스트 생성
-    // (1) 루트 manifest_list.txt
+    // (1) 루트 manifest_list.txt (인적 정보)
     const listHeaders = ['이사회명', '직함', '성명'];
     const listRows = records.map((rec) => [
       rec.affiliation,
@@ -106,17 +103,14 @@ export class ManifestExporter {
     const qrManifestPath = path.join(outputDir, 'manifest_qr.txt');
     fs.writeFileSync(qrManifestPath, Buffer.from(utf16leBom + qrContent, 'utf16le'));
 
-    // (3) 루트 manifest_master.txt (모든 정보 총망라 통합 마스터 매니페스트)
-    const masterHeaders = ['일련번호', '이사회명', '직함', '성명', '티셔츠사이즈', '#QR코드', '시트명', '생성시각'];
+    // (3) 루트 manifest_master.txt (InDesign 통합 마스터: 일련번호, 이사회명, 직함, 성명, #QR코드)
+    const masterHeaders = ['일련번호', '이사회명', '직함', '성명', '#QR코드'];
     const masterRows = records.map((rec) => [
       rec.managementNumber || '',
       rec.affiliation,
       rec.title,
       rec.name,
-      rec.tshirtSize || '',
       rec.sheetName ? `${rec.sheetName}/${rec.fileName}` : rec.fileName,
-      rec.sheetName || '',
-      rec.createdAt || '',
     ]);
     const masterContent = [
       masterHeaders.join('\t'),
