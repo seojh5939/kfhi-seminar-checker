@@ -15,7 +15,7 @@ function createWindow() {
     height: 750,
     minWidth: 850,
     minHeight: 600,
-    title: '기아대책 행사 QR 인식기 (Reader v1.2.1)',
+    title: '기아대책 행사 QR 인식기 (Reader v1.5.0)',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,

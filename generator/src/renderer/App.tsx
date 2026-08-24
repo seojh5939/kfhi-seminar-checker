@@ -1364,7 +1364,7 @@ export function App() {
             </div>
 
             <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #334155', textAlign: 'center', fontSize: '13px', color: '#64748b' }}>
-              기아대책 QR 생성기 v{appPackageJson.version} (v1.1)
+              기아대책 QR 생성기 v{appPackageJson.version} (v1.5.0)
             </div>
           </div>
         </div>
