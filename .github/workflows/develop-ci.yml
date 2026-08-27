@@ -1,0 +1,41 @@
+name: Develop CI (Tests & Build Check)
+
+on:
+  pull_request:
+    branches:
+      - develop
+  push:
+    branches:
+      - develop
+
+jobs:
+  test:
+    name: Run Unit Tests & Build Check
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Shared Library
+        run: pnpm build:shared
+
+      - name: Run Tests
+        run: pnpm test
+
+      - name: Verify Full Build
+        run: pnpm build:all
