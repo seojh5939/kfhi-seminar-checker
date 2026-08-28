@@ -69,8 +69,8 @@ jobs:
 
             const semverComparison = compareSemver(currentVersion, latestVersion);
             const isNewer = semverComparison > 0;
-            // 만약 태그는 생성되었으나 4개 exe 바이너리가 완전히 업로드되지 않은 경우 재업로드 허용
-            const isIncompleteRelease = (semverComparison === 0 && latestReleaseAssetsCount < 4);
+            // 만약 태그는 생성되었으나 2개 설치 파일(Setup exe)이 완전히 업로드되지 않은 경우 재업로드 허용
+            const isIncompleteRelease = (semverComparison === 0 && latestReleaseAssetsCount < 2);
 
             const isMainPush = (context.eventName === 'push' && context.ref === 'refs/heads/main');
             const isDispatch = (context.eventName === 'workflow_dispatch');

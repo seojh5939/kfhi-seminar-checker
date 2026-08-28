@@ -10,11 +10,12 @@
     "dev": "vite",
     "start": "electron .",
     "test": "jest",
-    "package:win": "pnpm build && electron-builder --win nsis portable"
+    "package:win": "pnpm build && electron-builder --win nsis"
   },
   "build": {
     "appId": "com.kfhi.generator",
     "productName": "기아대책 명찰 QR 생성기",
+    "artifactName": "KFHI-QR-Generator-Setup-${version}.${ext}",
     "directories": {
       "output": "release"
     },
@@ -25,12 +26,6 @@
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "portable",
           "arch": [
             "x64"
           ]

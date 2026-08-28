@@ -10,11 +10,12 @@
     "dev": "vite",
     "start": "electron .",
     "test": "jest",
-    "package:win": "pnpm build && electron-builder --win nsis portable"
+    "package:win": "pnpm build && electron-builder --win nsis"
   },
   "build": {
     "appId": "com.kfhi.reader",
     "productName": "기아대책 출입관리 QR 인식기",
+    "artifactName": "KFHI-QR-Reader-Setup-${version}.${ext}",
     "directories": {
       "output": "release"
     },
@@ -25,12 +26,6 @@
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "portable",
           "arch": [
             "x64"
           ]
