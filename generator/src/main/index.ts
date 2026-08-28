@@ -16,7 +16,7 @@ function createWindow() {
     height: 780,
     minWidth: 850,
     minHeight: 620,
-    title: '기아대책 행사 QR코드 대량 생성기 (v1.2.1)',
+    title: '기아대책 행사 QR코드 대량 생성기 (v1.5.0)',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -171,18 +171,22 @@ ipcMain.handle(
         }
       );
 
-      const manifestPath = path.join(outputDir, 'manifest.txt');
-      ManifestExporter.exportToTxt(manifestRecords, manifestPath);
+      const { listManifestPath, qrManifestPath, masterManifestPath } = ManifestExporter.exportDualTxt(manifestRecords, outputDir);
 
       return {
         success: true,
-        manifestPath,
+        manifestPath: masterManifestPath,
+        listManifestPath,
+        qrManifestPath,
+        masterManifestPath,
         count: manifestRecords.length,
       };
     } catch (error: any) {
       return {
         success: false,
         manifestPath: '',
+        listManifestPath: '',
+        qrManifestPath: '',
         count: 0,
         error: error.message || 'QR 코드 생성 중 오류가 발생했습니다.',
       };

@@ -149,9 +149,11 @@ export const Scanner: React.FC<ScannerProps> = ({
       try {
         setCameraStatus('INITIALIZING');
 
+        // 720p HD 고밀도 스트림 캡처 (소형 20mm QR 픽셀 분해능 확보, 480p 안전 Fallback)
         const videoConstraints: MediaTrackConstraints = {
-          width: { ideal: 640 },
-          height: { ideal: 480 },
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 },
+          frameRate: { ideal: 30, max: 30 },
         };
 
         if (selectedDeviceId) {
@@ -160,7 +162,6 @@ export const Scanner: React.FC<ScannerProps> = ({
           videoConstraints.facingMode = 'user';
         }
 
-        // 640x480 다운샘플링 캡처 (저사양 카메라 최적화)
         stream = await navigator.mediaDevices.getUserMedia({
           video: videoConstraints,
           audio: false,
@@ -183,7 +184,7 @@ export const Scanner: React.FC<ScannerProps> = ({
       }
     };
 
-    // 중앙 ROI (250x250) 잘라내기 초고속 프레임 루프 (100ms 디바운스, 200ms 타겟)
+    // 중앙 ROI (안전한 영역) 초고속 프레임 루프 (100ms 디바운스)
     let lastScanTime = 0;
 
     const scanFrameLoop = async () => {
@@ -200,19 +201,19 @@ export const Scanner: React.FC<ScannerProps> = ({
           const videoWidth = video.videoWidth;
           const videoHeight = video.videoHeight;
 
-          // 중앙 250x250 ROI 계산
-          const cropSize = Math.min(250, videoWidth, videoHeight);
-          const cropX = (videoWidth - cropSize) / 2;
-          const cropY = (videoHeight - cropSize) / 2;
+          // 안정적인 중앙 ROI 크롭 (충분한 영역 확보로 QR 모서리 잘림 방지)
+          const cropSize = Math.floor(Math.min(420, videoWidth, videoHeight));
+          const cropX = Math.floor((videoWidth - cropSize) / 2);
+          const cropY = Math.floor((videoHeight - cropSize) / 2);
 
           canvas.width = cropSize;
           canvas.height = cropSize;
 
-          // ROI 영역만 잘라내어 Canvas에 드로잉
+          // 카메라 원본 픽셀 무손실 드로잉 (WASM 네이티브 이진화 엔진 활용)
           ctx.drawImage(video, cropX, cropY, cropSize, cropSize, 0, 0, cropSize, cropSize);
 
           try {
-            // qr-scanner WASM 디코더 호출 (ROI Canvas 대상)
+            // qr-scanner WASM 디코더 호출
             const result = await QrScanner.scanImage(canvas, {
               returnDetailedScanResult: true,
             });
@@ -384,7 +385,7 @@ export const Scanner: React.FC<ScannerProps> = ({
         />
         <canvas ref={canvasRef} style={{ display: 'none' }} />
 
-        {/* 중앙 ROI 가이드 Overlay (250x250 레티클 박스) */}
+        {/* 중앙 ROI 가이드 Overlay (20mm 소형 QR 초점 스위트스팟 레티클 박스) */}
         {isCameraOn && cameraStatus === 'READY' && (
           <div
             style={{
@@ -394,30 +395,43 @@ export const Scanner: React.FC<ScannerProps> = ({
               right: 0,
               bottom: 0,
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
               pointerEvents: 'none',
+              gap: '12px',
             }}
           >
             <div
               style={{
                 width: '220px',
                 height: '220px',
-                border: '3px solid #10b981',
+                border: '2px solid rgba(16, 185, 129, 0.7)',
                 borderRadius: '16px',
-                boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.4)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#10b981',
-                fontWeight: 'bold',
-                fontSize: '14px',
+                boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.45)',
+                position: 'relative',
               }}
             >
-              <span style={{ backgroundColor: 'rgba(0,0,0,0.6)', padding: '4px 10px', borderRadius: '4px' }}>
-                QR을 사각형 안에 맞추세요
-              </span>
+              {/* 4개 코너 엣지 강조 */}
+              <div style={{ position: 'absolute', top: -2, left: -2, width: '22px', height: '22px', borderTop: '4px solid #34d399', borderLeft: '4px solid #34d399', borderTopLeftRadius: '16px' }} />
+              <div style={{ position: 'absolute', top: -2, right: -2, width: '22px', height: '22px', borderTop: '4px solid #34d399', borderRight: '4px solid #34d399', borderTopRightRadius: '16px' }} />
+              <div style={{ position: 'absolute', bottom: -2, left: -2, width: '22px', height: '22px', borderBottom: '4px solid #34d399', borderLeft: '4px solid #34d399', borderBottomLeftRadius: '16px' }} />
+              <div style={{ position: 'absolute', bottom: -2, right: -2, width: '22px', height: '22px', borderBottom: '4px solid #34d399', borderRight: '4px solid #34d399', borderBottomRightRadius: '16px' }} />
             </div>
+            <span
+              style={{
+                backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                color: '#34d399',
+                padding: '6px 14px',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 'bold',
+                border: '1px solid rgba(52, 211, 153, 0.4)',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
+              }}
+            >
+              QR코드를 사각형 안에 비춰주세요
+            </span>
           </div>
         )}
 

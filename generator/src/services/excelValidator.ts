@@ -67,6 +67,7 @@ export class ExcelValidator {
           name,
           tshirtSize,
           isSpouse,
+          sheetName: row.sheetName,
         });
       }
     });
