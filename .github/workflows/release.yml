@@ -62,15 +62,21 @@ jobs:
               return 0;
             }
 
-            const isNewer = compareSemver(currentVersion, latestVersion) > 0;
+            const semverComparison = compareSemver(currentVersion, latestVersion);
+            const isNewer = semverComparison > 0;
+            // 만약 태그는 생성되었으나 4개 exe 바이너리가 완전히 업로드되지 않은 경우 재업로드 허용
+            const isIncompleteRelease = (semverComparison === 0 && latestReleaseAssetsCount < 4);
+
             const isMainPush = (context.eventName === 'push' && context.ref === 'refs/heads/main');
             const isDispatch = (context.eventName === 'workflow_dispatch');
-            const shouldRelease = (isMainPush || isDispatch) && isNewer;
+            const shouldRelease = (isMainPush && (isNewer || isIncompleteRelease)) || isDispatch;
 
             core.info(`--------------------------------------------------`);
             core.info(`📌 Current package.json Version : ${currentVersion}`);
             core.info(`🏷️ Latest GitHub Release Version : ${latestVersion} (${latestTagName})`);
+            core.info(`📦 Assets count in latest release: ${latestReleaseAssetsCount}`);
             core.info(`✨ Is Current Version Newer?     : ${isNewer}`);
+            core.info(`🔄 Is Release Incomplete?        : ${isIncompleteRelease}`);
             core.info(`🚀 Should Trigger Release?       : ${shouldRelease}`);
             core.info(`--------------------------------------------------`);
 
@@ -96,7 +102,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -119,21 +125,43 @@ jobs:
         run: |
           echo "$GOOGLE_CREDENTIALS_SECRET" > google-credentials.json
 
-      # 버전이 최신이고 main 브랜치에 머지/푸시되었을 때만 exe 패키징 실행
+      # 버전이 최신이거나 미완료된 릴리즈인 경우 exe 패키징 실행
       - name: Package Windows Executables
         if: steps.version_check.outputs.should_release == 'true'
         run: pnpm package:win:all
 
-      # GitHub Release 생성 및 exe 파일 첨부 배포
+      # GitHub CLI를 통한 안정적인 Release 생성 및 순차적 대용량 exe 파일 업로드
       - name: Create GitHub Release & Upload Binaries
         if: steps.version_check.outputs.should_release == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version_check.outputs.tag_name }}
-          name: Release ${{ steps.version_check.outputs.tag_name }}
-          files: |
-            generator/release/*.exe
-            reader/release/*.exe
-          generate_release_notes: true
-          draft: false
-          prerelease: false
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.version_check.outputs.tag_name }}
+        run: |
+          Write-Host "Creating or verifying GitHub Release for $env:TAG_NAME..."
+          
+          # Release 생성 시도 (이미 존재하는 경우 오류 무시하고 업로드로 진행)
+          $createResult = gh release create $env:TAG_NAME --title "Release $env:TAG_NAME" --generate-notes --draft=false --prerelease=false 2>&1
+          Write-Host "Release create response: $createResult"
+
+          # EXE 파일 목록 확인
+          $files = Get-ChildItem -Path "generator/release/*.exe", "reader/release/*.exe" -File
+          Write-Host "Found $($files.Count) binary files to upload:"
+          $files | ForEach-Object { Write-Host " - $($_.FullName)" }
+
+          if ($files.Count -eq 0) {
+            Write-Error "No .exe files found to upload in generator/release or reader/release!"
+            exit 1
+          }
+
+          # 대용량 바이너리를 순차적으로 안정 업로드 (--clobber 로 덮어쓰기 허용)
+          foreach ($file in $files) {
+            Write-Host "Uploading $($file.Name)..."
+            gh release upload $env:TAG_NAME "$($file.FullName)" --clobber
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "Failed to upload $($file.Name)"
+              exit 1
+            }
+            Write-Host "Successfully uploaded $($file.Name)"
+          }
+
