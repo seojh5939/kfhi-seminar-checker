@@ -244,6 +244,11 @@ jobs:
 
           Write-Host "✅ Verified: google-credentials.json is physically bundled in app.asar!"
 
+          $resourceCred = "reader/release/win-unpacked/resources/google-credentials.json"
+          if (Test-Path $resourceCred) {
+            Write-Host "✅ Verified: Physical extraResources file exists at $resourceCred ($((Get-Item $resourceCred).Length) bytes)"
+          }
+
           # 최종 생성된 Setup.exe 파일 확인
           $setupExe = Get-Item "reader/release/KFHI-QR-Reader-Setup-*.exe"
           $genExe = Get-Item "generator/release/KFHI-QR-Generator-Setup-*.exe"

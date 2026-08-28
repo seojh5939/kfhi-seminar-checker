@@ -35,6 +35,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "기아대책 명찰 QR 생성기"

@@ -22,6 +22,12 @@
     "files": [
       "dist/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "dist/google-credentials.json",
+        "to": "google-credentials.json"
+      }
+    ],
     "win": {
       "target": [
         {
@@ -35,6 +41,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "기아대책 QR 인식기"

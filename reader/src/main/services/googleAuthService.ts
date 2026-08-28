@@ -36,28 +36,34 @@ export class GoogleAuthService {
     }
 
     const candidateDirs: string[] = [
-      // 1. 사용자 영구 AppData 폴더 (%APPDATA%/reader/) - 설치형에서 수동 선택 시 복사되는 위치
+      // 1. 패키징된 물리 리소스 폴더 (extraResources: resources/)
+      process.resourcesPath || '',
+      process.resourcesPath ? path.join(process.resourcesPath, 'resources') : '',
+
+      // 2. 현재 번들링 실행 경로 (__dirname 및 상위)
+      __dirname,
+      path.resolve(__dirname, '..'),
+      path.resolve(__dirname, '../..'),
+
+      // 3. 사용자 영구 AppData 폴더 (%APPDATA%/reader/)
       app.getPath('userData'),
 
-      // 2. 패키징된 실행 환경: exe 파일과 동일한 디렉터리 (포터블 또는 설치 폴더)
+      // 4. 패키징된 실행 환경: exe 파일과 동일한 디렉터리
       process.execPath ? path.dirname(process.execPath) : '',
 
-      // 3. 패키징된 리소스 폴더 (resources/)
-      process.resourcesPath || '',
-
-      // 4. asar 패키지 내부 및 내부 dist 폴더
+      // 5. asar 패키지 내부 및 내부 dist 폴더
       app.getAppPath(),
       path.join(app.getAppPath(), 'dist'),
       path.join(app.getAppPath(), 'dist', 'main'),
       path.resolve(app.getAppPath(), '..'),
       path.resolve(app.getAppPath(), '../..'),
 
-      // 5. 작업 디렉터리 (프로젝트 루트 및 reader 폴더)
+      // 6. 작업 디렉터리 (프로젝트 루트 및 reader 폴더)
       process.cwd(),
       path.resolve(process.cwd(), 'reader'),
       path.resolve(process.cwd(), '..'),
 
-      // 6. 사용자가 바탕화면이나 내 문서에 둘 경우 자동 감지
+      // 7. 사용자가 바탕화면이나 내 문서에 둘 경우 자동 감지
       app.getPath('desktop'),
       app.getPath('documents'),
     ].filter(Boolean);
@@ -99,36 +105,60 @@ export class GoogleAuthService {
 
   public getCredentials(): GoogleCredentials | null {
     const credPath = this.findCredentialsPath();
-    if (!credPath) return null;
+    if (credPath) {
+      try {
+        const raw = fs.readFileSync(credPath, 'utf8');
+        const data = JSON.parse(raw);
 
-    try {
-      const raw = fs.readFileSync(credPath, 'utf8');
-      const data = JSON.parse(raw);
-
-      if (data.installed) {
-        return {
-          client_id: data.installed.client_id,
-          client_secret: data.installed.client_secret,
-          project_id: data.installed.project_id,
-        };
+        if (data.installed) {
+          return {
+            client_id: data.installed.client_id,
+            client_secret: data.installed.client_secret,
+            project_id: data.installed.project_id,
+          };
+        }
+        if (data.web) {
+          return {
+            client_id: data.web.client_id,
+            client_secret: data.web.client_secret,
+            project_id: data.web.project_id,
+          };
+        }
+        if (data.client_id && data.client_secret) {
+          return {
+            client_id: data.client_id,
+            client_secret: data.client_secret,
+            project_id: data.project_id,
+          };
+        }
+      } catch (e) {
+        console.error('Failed to parse google-credentials.json:', e);
       }
-      if (data.web) {
-        return {
-          client_id: data.web.client_id,
-          client_secret: data.web.client_secret,
-          project_id: data.web.project_id,
-        };
-      }
-      if (data.client_id && data.client_secret) {
-        return {
-          client_id: data.client_id,
-          client_secret: data.client_secret,
-          project_id: data.project_id,
-        };
-      }
-    } catch (e) {
-      console.error('Failed to parse google-credentials.json:', e);
     }
+
+    // fallback: require로 asar/dist 내부 직접 로드 시도
+    const tryRequirePaths = [
+      './google-credentials.json',
+      '../google-credentials.json',
+      '../../google-credentials.json',
+      './dist/google-credentials.json',
+      './dist/main/google-credentials.json',
+    ];
+    for (const reqPath of tryRequirePaths) {
+      try {
+        // @ts-ignore
+        const data = require(reqPath);
+        if (data && (data.installed || data.web || (data.client_id && data.client_secret))) {
+          const clientData = data.installed || data.web || data;
+          return {
+            client_id: clientData.client_id,
+            client_secret: clientData.client_secret,
+            project_id: clientData.project_id,
+          };
+        }
+      } catch {}
+    }
+
     return null;
   }
 
@@ -154,12 +184,13 @@ export class GoogleAuthService {
    * 인증 상태 조회
    */
   public async getStatus(): Promise<GoogleAuthStatus> {
-    const credPath = this.findCredentialsPath();
+    const creds = this.getCredentials();
+    const credPath = this.findCredentialsPath() || (creds ? 'embedded:google-credentials.json' : null);
     const tokens = this.loadTokens();
 
     if (!tokens || (!tokens.access_token && !tokens.refresh_token)) {
       return {
-        hasCredentialsFile: !!credPath,
+        hasCredentialsFile: !!creds,
         credentialsPath: credPath || undefined,
         isAuthenticated: false,
       };
@@ -168,7 +199,7 @@ export class GoogleAuthService {
     try {
       const accessToken = await this.getValidAccessToken();
       return {
-        hasCredentialsFile: !!credPath,
+        hasCredentialsFile: !!creds,
         credentialsPath: credPath || undefined,
         isAuthenticated: !!accessToken,
         userEmail: tokens.user_email,
@@ -176,7 +207,7 @@ export class GoogleAuthService {
       };
     } catch {
       return {
-        hasCredentialsFile: !!credPath,
+        hasCredentialsFile: !!creds,
         credentialsPath: credPath || undefined,
         isAuthenticated: false,
         userEmail: tokens.user_email,
