@@ -110,19 +110,74 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # 구글 인증 정보 Secret이 설정되어 있는 경우 빌드/테스트/패키징 전 즉시 주입
-      - name: Setup Google Credentials
+      # [1단계] 구글 인증 정보 Secret 주입 및 JSON 유효성 가시화 검증
+      - name: Setup & Validate Google Credentials
         shell: pwsh
         env:
           GOOGLE_CREDS: ${{ secrets.GOOGLE_CREDENTIALS }}
         run: |
-          if ($env:GOOGLE_CREDS -and $env:GOOGLE_CREDS.Trim() -ne '') {
-            [System.IO.File]::WriteAllText("google-credentials.json", $env:GOOGLE_CREDS, [System.Text.Encoding]::UTF8)
-            [System.IO.File]::WriteAllText("reader/google-credentials.json", $env:GOOGLE_CREDS, [System.Text.Encoding]::UTF8)
-            Write-Host "✅ Successfully generated google-credentials.json for Reader build and packaging."
-          } else {
-            Write-Warning "⚠️ GOOGLE_CREDENTIALS secret is not configured in GitHub repository secrets. Packaging without embedded credentials."
+          Write-Host "=========================================================="
+          Write-Host "🔍 [STEP 1] Validating and Writing Google Credentials..."
+          Write-Host "=========================================================="
+          
+          if (-not $env:GOOGLE_CREDS -or $env:GOOGLE_CREDS.Trim() -eq '') {
+            Write-Error "❌ CRITICAL: GOOGLE_CREDENTIALS secret is empty or missing in GitHub Repository Secrets!"
+            exit 1
           }
+
+          # JSON 파싱 검증
+          try {
+            $json = $env:GOOGLE_CREDS | ConvertFrom-Json
+          } catch {
+            Write-Error "❌ CRITICAL: GOOGLE_CREDENTIALS secret is not valid JSON! Error: $_"
+            exit 1
+          }
+
+          # installed / web / client_id 구조 확인
+          $clientId = ""
+          $projectId = "N/A"
+          $hasSecret = $false
+
+          if ($json.installed) {
+            $clientId = $json.installed.client_id
+            $projectId = $json.installed.project_id
+            $hasSecret = [bool]$json.installed.client_secret
+          } elseif ($json.web) {
+            $clientId = $json.web.client_id
+            $projectId = $json.web.project_id
+            $hasSecret = [bool]$json.web.client_secret
+          } elseif ($json.client_id) {
+            $clientId = $json.client_id
+            $projectId = $json.project_id
+            $hasSecret = [bool]$json.client_secret
+          }
+
+          if (-not $clientId) {
+            Write-Error "❌ CRITICAL: No client_id found in google-credentials.json structure!"
+            exit 1
+          }
+
+          # 안전한 마스킹 출력 (앞 12글자 + ... + 뒷 10글자)
+          $maskedClientId = if ($clientId.Length -gt 25) {
+            $clientId.Substring(0, 12) + "..." + $clientId.Substring($clientId.Length - 10)
+          } else {
+            "***"
+          }
+
+          Write-Host "🔑 [Credentials Validation Info]"
+          Write-Host "  - Project ID    : $projectId"
+          Write-Host "  - Client ID     : $maskedClientId"
+          Write-Host "  - Client Secret : $(if ($hasSecret) { '✅ Present' } else { '❌ Missing' })"
+
+          # 파일 생성 (루트 및 reader/ 폴더)
+          [System.IO.File]::WriteAllText("google-credentials.json", $env:GOOGLE_CREDS, [System.Text.Encoding]::UTF8)
+          [System.IO.File]::WriteAllText("reader/google-credentials.json", $env:GOOGLE_CREDS, [System.Text.Encoding]::UTF8)
+
+          $rootFile = Get-Item "google-credentials.json"
+          $readerFile = Get-Item "reader/google-credentials.json"
+          Write-Host "  - Root file created   : $($rootFile.Length) bytes ($($rootFile.FullName))"
+          Write-Host "  - Reader file created : $($readerFile.Length) bytes ($($readerFile.FullName))"
+          Write-Host "=========================================================="
 
       - name: Run Tests
         run: |
@@ -132,10 +187,70 @@ jobs:
       - name: Verify Build
         run: pnpm build:all
 
-      # 버전이 최신이거나 미완료된 릴리즈인 경우 exe 패키징 실행
+      # [2단계] 컴파일 결과(dist/) 내 google-credentials.json 포함 여부 검증
+      - name: Validate Build Artifacts (dist/)
+        shell: pwsh
+        run: |
+          Write-Host "=========================================================="
+          Write-Host "🔍 [STEP 2] Inspecting reader/dist/ contents..."
+          Write-Host "=========================================================="
+
+          $distMainCred = "reader/dist/main/google-credentials.json"
+          $distCred = "reader/dist/google-credentials.json"
+
+          $foundMain = Test-Path $distMainCred
+          $foundDist = Test-Path $distCred
+
+          Write-Host "  - reader/dist/main/google-credentials.json : $(if ($foundMain) { '✅ Found (' + (Get-Item $distMainCred).Length + ' bytes)' } else { '❌ Missing' })"
+          Write-Host "  - reader/dist/google-credentials.json      : $(if ($foundDist) { '✅ Found (' + (Get-Item $distCred).Length + ' bytes)' } else { '❌ Missing' })"
+
+          if (-not $foundMain -or -not $foundDist) {
+            Write-Error "❌ CRITICAL: google-credentials.json was NOT copied to reader/dist/ during build!"
+            exit 1
+          }
+          Write-Host "=========================================================="
+
+      # 버전이 최신이거나 동일 버전인 경우 exe 패키징 실행
       - name: Package Windows Executables
         if: steps.version_check.outputs.should_release == 'true'
         run: pnpm package:win:all
+
+      # [3단계] 패키징된 app.asar 바이너리 내부 파일 트리 검증
+      - name: Validate Packaged Binary (app.asar & exe)
+        if: steps.version_check.outputs.should_release == 'true'
+        shell: pwsh
+        run: |
+          Write-Host "=========================================================="
+          Write-Host "🔍 [STEP 3] Inspecting packaged app.asar and installer..."
+          Write-Host "=========================================================="
+
+          $asarPath = "reader/release/win-unpacked/resources/app.asar"
+          if (-not (Test-Path $asarPath)) {
+            Write-Error "❌ CRITICAL: $asarPath not found!"
+            exit 1
+          }
+
+          Write-Host "📦 Inspecting $asarPath contents via asar CLI..."
+          $asarList = npx --yes asar list $asarPath
+
+          $matchedLines = $asarList | Where-Object { $_ -like "*google-credentials.json*" }
+          Write-Host "🔍 Matching files in app.asar:"
+          $matchedLines | ForEach-Object { Write-Host "   -> $_" }
+
+          if (-not $matchedLines -or $matchedLines.Count -eq 0) {
+            Write-Error "❌ CRITICAL: google-credentials.json is NOT inside app.asar! Failing release!"
+            exit 1
+          }
+
+          Write-Host "✅ Verified: google-credentials.json is physically bundled in app.asar!"
+
+          # 최종 생성된 Setup.exe 파일 확인
+          $setupExe = Get-Item "reader/release/KFHI-QR-Reader-Setup-*.exe"
+          $genExe = Get-Item "generator/release/KFHI-QR-Generator-Setup-*.exe"
+          Write-Host "📦 Generated Installers:"
+          Write-Host "   -> Reader: $($setupExe.Name) ($([Math]::Round($setupExe.Length / 1MB, 2)) MB)"
+          Write-Host "   -> Generator: $($genExe.Name) ($([Math]::Round($genExe.Length / 1MB, 2)) MB)"
+          Write-Host "=========================================================="
 
       # GitHub CLI를 통한 안정적인 Release 생성 및 순차적 대용량 exe 파일 업로드
       - name: Create GitHub Release & Upload Binaries
