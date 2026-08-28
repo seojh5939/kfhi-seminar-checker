@@ -12,6 +12,9 @@ on:
 permissions:
   contents: write
 
+env:
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true'
+
 jobs:
   check-and-release:
     name: Check Version & Release Windows Executables
@@ -34,6 +37,7 @@ jobs:
 
             let latestVersion = '0.0.0';
             let latestTagName = 'none';
+            let latestReleaseAssetsCount = 0;
 
             try {
               const { data: release } = await github.rest.repos.getLatestRelease({
@@ -42,6 +46,7 @@ jobs:
               });
               latestTagName = release.tag_name;
               latestVersion = release.tag_name.replace(/^v/, '');
+              latestReleaseAssetsCount = (release.assets && Array.isArray(release.assets)) ? release.assets.length : 0;
             } catch (error) {
               if (error.status === 404) {
                 core.info('No previous releases found on GitHub. This will be the first release.');
