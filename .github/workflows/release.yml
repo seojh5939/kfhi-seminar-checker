@@ -122,13 +122,19 @@ jobs:
         run: pnpm build:all
 
       # 구글 인증 정보 Secret이 설정되어 있는 경우 주입
-      - name: Setup Google Credentials (Optional Secret)
-        if: env.GOOGLE_CREDENTIALS_SECRET != ''
+      - name: Setup Google Credentials
+        if: steps.version_check.outputs.should_release == 'true'
+        shell: pwsh
         env:
-          GOOGLE_CREDENTIALS_SECRET: ${{ secrets.GOOGLE_CREDENTIALS }}
-        shell: bash
+          GOOGLE_CREDS: ${{ secrets.GOOGLE_CREDENTIALS }}
         run: |
-          echo "$GOOGLE_CREDENTIALS_SECRET" > google-credentials.json
+          if ($env:GOOGLE_CREDS -and $env:GOOGLE_CREDS.Trim() -ne '') {
+            [System.IO.File]::WriteAllText("google-credentials.json", $env:GOOGLE_CREDS, [System.Text.Encoding]::UTF8)
+            [System.IO.File]::WriteAllText("reader/google-credentials.json", $env:GOOGLE_CREDS, [System.Text.Encoding]::UTF8)
+            Write-Host "✅ Successfully generated google-credentials.json for Reader packaging."
+          } else {
+            Write-Warning "⚠️ GOOGLE_CREDENTIALS secret is not configured in GitHub repository secrets. Packaging without embedded credentials."
+          }
 
       # 버전이 최신이거나 미완료된 릴리즈인 경우 exe 패키징 실행
       - name: Package Windows Executables
