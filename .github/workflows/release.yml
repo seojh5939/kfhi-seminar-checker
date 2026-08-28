@@ -69,19 +69,16 @@ jobs:
 
             const semverComparison = compareSemver(currentVersion, latestVersion);
             const isNewer = semverComparison > 0;
-            // 만약 태그는 생성되었으나 2개 설치 파일(Setup exe)이 완전히 업로드되지 않은 경우 재업로드 허용
-            const isIncompleteRelease = (semverComparison === 0 && latestReleaseAssetsCount < 2);
-
             const isMainPush = (context.eventName === 'push' && context.ref === 'refs/heads/main');
             const isDispatch = (context.eventName === 'workflow_dispatch');
-            const shouldRelease = (isMainPush && (isNewer || isIncompleteRelease)) || isDispatch;
+            // main 브랜치 푸시 시 최신 버전이거나 동일 버전이면 항상 패키징 및 릴리즈 덮어쓰기 실행
+            const shouldRelease = (isMainPush && semverComparison >= 0) || isDispatch;
 
             core.info(`--------------------------------------------------`);
             core.info(`📌 Current package.json Version : ${currentVersion}`);
             core.info(`🏷️ Latest GitHub Release Version : ${latestVersion} (${latestTagName})`);
             core.info(`📦 Assets count in latest release: ${latestReleaseAssetsCount}`);
             core.info(`✨ Is Current Version Newer?     : ${isNewer}`);
-            core.info(`🔄 Is Release Incomplete?        : ${isIncompleteRelease}`);
             core.info(`🚀 Should Trigger Release?       : ${shouldRelease}`);
             core.info(`--------------------------------------------------`);
 
