@@ -1,14 +1,20 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import QRCode from 'qrcode';
-import { CryptoEngine, AttendeeInput, ManifestRecord, formatKSTDateTime } from 'shared';
+import {
+  CryptoEngine,
+  AttendeeInput,
+  ManifestRecord,
+  formatKSTDateTime,
+  resolveRegionCode,
+} from 'shared';
 
 export interface ProgressCallback {
   (current: number, total: number, currentAttendee: AttendeeInput): void;
 }
 
 /**
- * QR 코드 이미지 생성 및 파일 시스템 저장 전담 엔진 (v1.1)
+ * QR 코드 이미지 생성 및 파일 시스템 저장 전담 엔진 (v1.5: 탭별 관할지역 폴더 분류 & 6자리 일련번호 채번)
  */
 export class QRGeneratorEngine {
   private cryptoEngine: CryptoEngine;
@@ -18,8 +24,8 @@ export class QRGeneratorEngine {
   }
 
   /**
-   * AttendeeInput 목록을 수신하여 QR 이미지(PNG)를 대량 생성
-   * 파일명 규칙: {이사회명}_{직책}_{성명}.png
+   * AttendeeInput 목록을 수신하여 탭(관할 지역)별 폴더를 생성하고 6자리 일련번호 QR 이미지(PNG)를 대량 생성
+   * 저장 경로 규칙: {outputDir}/{탭이름(관할지역)}/{일련번호}.png
    */
   public async generateBulk(
     attendees: AttendeeInput[],
@@ -37,49 +43,65 @@ export class QRGeneratorEngine {
     }
 
     const total = attendees.length;
-    const fileNameCounts: Record<string, number> = {};
+    // 권역별 누적 순번 카운터 (예: '20' -> 1, 2, 3...)
+    const regionCounters = new Map<string, number>();
 
     for (let i = 0; i < total; i++) {
       const attendee = attendees[i];
 
-      // 파일명 안전 정제
-      const safeAff = this.sanitizeFileName(attendee.affiliation);
-      const safeTitle = this.sanitizeFileName(attendee.title);
-      const safeName = this.sanitizeFileName(attendee.name);
+      // 1. 관할 지역 탭 폴더 확인 및 생성
+      const rawSheetName = attendee.sheetName || '기타';
+      const safeSheetName = this.sanitizeFileName(rawSheetName);
+      const sheetDirPath = path.join(absoluteOutputDir, safeSheetName);
+      if (!fs.existsSync(sheetDirPath)) {
+        fs.mkdirSync(sheetDirPath, { recursive: true });
+      }
 
-      const baseName = `${safeAff}_${safeTitle}_${safeName}`;
-      fileNameCounts[baseName] = (fileNameCounts[baseName] || 0) + 1;
+      // 2. 일련번호 채번 (전화 지역번호 끝 2자리 + 4자리 순번 0001~9999)
+      let serialNumber = attendee.managementNumber;
+      if (!serialNumber || !/^\d{5,6}$/.test(serialNumber)) {
+        const regionCode = resolveRegionCode(attendee.affiliation, rawSheetName);
+        const nextSeq = (regionCounters.get(regionCode) || 0) + 1;
+        regionCounters.set(regionCode, nextSeq);
+        serialNumber = `${regionCode}${String(nextSeq).padStart(4, '0')}`;
+      }
 
-      // 동명이인 등 동일 파일명 충돌 방어
-      const suffix = fileNameCounts[baseName] > 1 ? `_${fileNameCounts[baseName]}` : '';
-      const fileName = `${baseName}${suffix}.png`;
-      const filePath = path.join(absoluteOutputDir, fileName);
+      // 3. 파일명 규칙: {일련번호}.png 및 관할 지역 폴더 내 저장
+      const fileName = `${serialNumber}.png`;
+      const filePath = path.join(sheetDirPath, fileName);
 
-      // 평문 또는 암호화 페이로드 인코딩
-      const payloadString = this.cryptoEngine.encodeAttendee(attendee, encrypted);
+      // 4. 일련번호를 포함한 참석자 정보로 암호화/평문 페이로드 생성
+      const attendeeWithSerial: AttendeeInput = {
+        ...attendee,
+        managementNumber: serialNumber,
+      };
+      const payloadString = this.cryptoEngine.encodeAttendee(attendeeWithSerial, encrypted);
 
-      // QR 코드 Buffer 생성 및 파일 저장 (300x300, M 레벨)
+      // 5. QR 코드 Buffer 생성 및 파일 저장 (300x300, M 레벨)
       const qrcodeModule: any = typeof (QRCode as any).toBuffer === 'function' ? QRCode : (QRCode as any).default || QRCode;
       const qrBuffer = await qrcodeModule.toBuffer(payloadString, {
         width: 300,
-        margin: 1,
+        margin: 2,
         errorCorrectionLevel: 'M',
         color: { dark: '#000000', light: '#FFFFFF' },
       });
 
       fs.writeFileSync(filePath, qrBuffer);
 
+      // 6. 매니페스트 레코드 적재
       manifestRecords.push({
+        managementNumber: serialNumber,
         affiliation: attendee.affiliation,
         title: attendee.title,
         name: attendee.name,
         tshirtSize: attendee.tshirtSize || '',
         fileName: fileName,
         createdAt,
+        sheetName: safeSheetName,
       });
 
       if (onProgress) {
-        onProgress(i + 1, total, attendee);
+        onProgress(i + 1, total, attendeeWithSerial);
       }
     }
 
@@ -87,7 +109,7 @@ export class QRGeneratorEngine {
   }
 
   /**
-   * Windows 파일 시스템 금지 문자 및 공백을 언더스코어로 안전 치환
+   * 폴더명 및 파일명 안전 정제
    */
   private sanitizeFileName(text: string): string {
     return (text || '')

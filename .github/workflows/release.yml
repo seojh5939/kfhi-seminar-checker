@@ -1,0 +1,139 @@
+name: Release (Main Merge & Exe Deploy)
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-release:
+    name: Check Version & Release Windows Executables
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check Package Version vs Latest GitHub Release
+        id: version_check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            const currentVersion = pkg.version;
+
+            let latestVersion = '0.0.0';
+            let latestTagName = 'none';
+
+            try {
+              const { data: release } = await github.rest.repos.getLatestRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+              });
+              latestTagName = release.tag_name;
+              latestVersion = release.tag_name.replace(/^v/, '');
+            } catch (error) {
+              if (error.status === 404) {
+                core.info('No previous releases found on GitHub. This will be the first release.');
+              } else {
+                throw error;
+              }
+            }
+
+            function compareSemver(v1, v2) {
+              const p1 = v1.split('.').map(n => parseInt(n, 10) || 0);
+              const p2 = v2.split('.').map(n => parseInt(n, 10) || 0);
+              for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
+                const n1 = p1[i] || 0;
+                const n2 = p2[i] || 0;
+                if (n1 > n2) return 1;
+                if (n1 < n2) return -1;
+              }
+              return 0;
+            }
+
+            const isNewer = compareSemver(currentVersion, latestVersion) > 0;
+            const isMainPush = (context.eventName === 'push' && context.ref === 'refs/heads/main');
+            const isDispatch = (context.eventName === 'workflow_dispatch');
+            const shouldRelease = (isMainPush || isDispatch) && isNewer;
+
+            core.info(`--------------------------------------------------`);
+            core.info(`📌 Current package.json Version : ${currentVersion}`);
+            core.info(`🏷️ Latest GitHub Release Version : ${latestVersion} (${latestTagName})`);
+            core.info(`✨ Is Current Version Newer?     : ${isNewer}`);
+            core.info(`🚀 Should Trigger Release?       : ${shouldRelease}`);
+            core.info(`--------------------------------------------------`);
+
+            if (context.eventName === 'pull_request') {
+              if (isNewer) {
+                core.notice(`[PR Check] Version ${currentVersion} is newer than latest release (${latestVersion}). Merging this PR will automatically publish a new Release!`);
+              } else {
+                core.warning(`[PR Check] Current version (${currentVersion}) is NOT greater than latest release (${latestVersion}). If this PR is meant for a new release, bump the version in package.json.`);
+              }
+            }
+
+            core.setOutput('current_version', currentVersion);
+            core.setOutput('latest_version', latestVersion);
+            core.setOutput('tag_name', `v${currentVersion}`);
+            core.setOutput('is_newer', isNewer ? 'true' : 'false');
+            core.setOutput('should_release', shouldRelease ? 'true' : 'false');
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Tests
+        run: |
+          pnpm build:shared
+          pnpm test
+
+      - name: Verify Build
+        run: pnpm build:all
+
+      # 구글 인증 정보 Secret이 설정되어 있는 경우 주입
+      - name: Setup Google Credentials (Optional Secret)
+        if: env.GOOGLE_CREDENTIALS_SECRET != ''
+        env:
+          GOOGLE_CREDENTIALS_SECRET: ${{ secrets.GOOGLE_CREDENTIALS }}
+        shell: bash
+        run: |
+          echo "$GOOGLE_CREDENTIALS_SECRET" > google-credentials.json
+
+      # 버전이 최신이고 main 브랜치에 머지/푸시되었을 때만 exe 패키징 실행
+      - name: Package Windows Executables
+        if: steps.version_check.outputs.should_release == 'true'
+        run: pnpm package:win:all
+
+      # GitHub Release 생성 및 exe 파일 첨부 배포
+      - name: Create GitHub Release & Upload Binaries
+        if: steps.version_check.outputs.should_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version_check.outputs.tag_name }}
+          name: Release ${{ steps.version_check.outputs.tag_name }}
+          files: |
+            generator/release/*.exe
+            reader/release/*.exe
+          generate_release_notes: true
+          draft: false
+          prerelease: false

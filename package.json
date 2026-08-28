@@ -1,6 +1,6 @@
 {
   "name": "kfhi-seminar-checker-monorepo",
-  "version": "1.2.1",
+  "version": "1.5.0",
   "private": true,
   "workspaces": [
     "shared",
@@ -20,7 +20,8 @@
     "package:win:generator": "pnpm --filter generator package:win",
     "package:win:all": "pnpm build:shared && pnpm package:win:generator && pnpm package:win:reader",
     "test:shared": "pnpm --filter shared test",
-    "test": "pnpm test:shared"
+    "test:generator": "pnpm --filter generator test",
+    "test": "pnpm test:shared && pnpm test:generator"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

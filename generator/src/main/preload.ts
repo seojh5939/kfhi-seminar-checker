@@ -29,6 +29,8 @@ export interface ElectronAPI {
   }) => Promise<{
     success: boolean;
     manifestPath: string;
+    listManifestPath?: string;
+    qrManifestPath?: string;
     count: number;
     error?: string;
   }>;
